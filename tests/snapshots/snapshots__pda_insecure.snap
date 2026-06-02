@@ -1,0 +1,53 @@
+---
+source: tests/snapshots.rs
+assertion_line: 49
+expression: stripped
+---
+{
+  "findings": [
+    {
+      "account": null,
+      "column": null,
+      "file": "programs/pda-insecure/src/lib.rs",
+      "hint": "Replace `a - b` with `a.checked_-(b).unwrap()` or use a checked-math helper.",
+      "instruction": null,
+      "line": null,
+      "message": "Unchecked `-` between `vault` and `amount` — wrap in `checked_-`, `saturating_-`, or `overflowing_-` to avoid panics on overflow.",
+      "program": "pda_insecure",
+      "rule": "unsafe_arithmetic",
+      "severity": "medium"
+    },
+    {
+      "account": "vault",
+      "column": null,
+      "file": null,
+      "hint": "Replace with the bare `bump` identifier or `bump = ctx.bumps.<field>` to use the canonical bump.",
+      "instruction": null,
+      "line": null,
+      "message": "Account `vault` pins `bump = bump` — this binds the bump to a user-supplied value instead of the canonical bump. The classic Sealevel-Attacks bypass.",
+      "program": "pda_insecure",
+      "rule": "pda_misconfig",
+      "severity": "high"
+    },
+    {
+      "account": "vault",
+      "column": null,
+      "file": null,
+      "hint": "Add `bump` to the constraint (e.g. `bump` or `bump = ctx.bumps.<field>`).",
+      "instruction": null,
+      "line": null,
+      "message": "Account `vault` declares `seeds = [...]` but does not pin the bump. Bump canonicalization is left to runtime guesswork, which can be exploited by passing non-canonical bumps.",
+      "program": "pda_insecure",
+      "rule": "pda_misconfig",
+      "severity": "high"
+    }
+  ],
+  "summary": {
+    "critical": 0,
+    "high": 2,
+    "info": 0,
+    "low": 0,
+    "medium": 1,
+    "total": 3
+  }
+}

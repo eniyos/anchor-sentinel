@@ -1,0 +1,149 @@
+---
+source: tests/snapshots.rs
+assertion_line: 42
+expression: stripped
+---
+{
+  "findings": [
+    {
+      "account": "destination",
+      "column": null,
+      "file": null,
+      "hint": "Add `#[account(mut)]` to the field and set `writable: true` in the IDL.",
+      "instruction": "withdraw",
+      "line": null,
+      "message": "Account `destination` on instruction `withdraw` is not declared mutable but its name implies a write target.",
+      "program": "vault",
+      "rule": "missing_mut",
+      "severity": "medium"
+    },
+    {
+      "account": "user",
+      "column": null,
+      "file": null,
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "deposit",
+      "line": null,
+      "message": "Account `user` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "authority",
+      "column": null,
+      "file": null,
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "deposit",
+      "line": null,
+      "message": "Account `authority` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "vault",
+      "column": null,
+      "file": null,
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "deposit",
+      "line": null,
+      "message": "Account `vault` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "authority",
+      "column": null,
+      "file": null,
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "withdraw",
+      "line": null,
+      "message": "Account `authority` on instruction `withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "vault",
+      "column": null,
+      "file": null,
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "withdraw",
+      "line": null,
+      "message": "Account `vault` on instruction `withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "destination",
+      "column": null,
+      "file": null,
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "withdraw",
+      "line": null,
+      "message": "Account `destination` on instruction `withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": null,
+      "column": null,
+      "file": "programs/vault/src/lib.rs",
+      "hint": "Replace `a + b` with `a.checked_+(b).unwrap()` or use a checked-math helper.",
+      "instruction": null,
+      "line": null,
+      "message": "Unchecked `+` between `vault` and `amount` — wrap in `checked_+`, `saturating_+`, or `overflowing_+` to avoid panics on overflow.",
+      "program": "vault",
+      "rule": "unsafe_arithmetic",
+      "severity": "medium"
+    },
+    {
+      "account": null,
+      "column": null,
+      "file": "programs/vault/src/lib.rs",
+      "hint": "Replace `a - b` with `a.checked_-(b).unwrap()` or use a checked-math helper.",
+      "instruction": null,
+      "line": null,
+      "message": "Unchecked `-` between `vault` and `amount` — wrap in `checked_-`, `saturating_-`, or `overflowing_-` to avoid panics on overflow.",
+      "program": "vault",
+      "rule": "unsafe_arithmetic",
+      "severity": "medium"
+    },
+    {
+      "account": "vault",
+      "column": null,
+      "file": null,
+      "hint": "Either type the field as `Account<'info, T>` for compile-time ownership, or add `#[account(owner = <expected_program_id>)]`.",
+      "instruction": "deposit",
+      "line": null,
+      "message": "Account `vault` on instruction `deposit` is mutable but typed as `AccountInfo` and lacks an `#[account(owner = …)]` constraint. Runtime code can deserialize arbitrary data into it.",
+      "program": "vault",
+      "rule": "missing_ownership",
+      "severity": "high"
+    },
+    {
+      "account": "vault",
+      "column": null,
+      "file": null,
+      "hint": "Either type the field as `Account<'info, T>` for compile-time ownership, or add `#[account(owner = <expected_program_id>)]`.",
+      "instruction": "withdraw",
+      "line": null,
+      "message": "Account `vault` on instruction `withdraw` is mutable but typed as `AccountInfo` and lacks an `#[account(owner = …)]` constraint. Runtime code can deserialize arbitrary data into it.",
+      "program": "vault",
+      "rule": "missing_ownership",
+      "severity": "high"
+    }
+  ],
+  "summary": {
+    "critical": 6,
+    "high": 2,
+    "info": 0,
+    "low": 0,
+    "medium": 3,
+    "total": 11
+  }
+}

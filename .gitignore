@@ -1,0 +1,27 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Vendored public fixtures (fetched via scripts/fetch-fixtures.sh)
+tests/fixtures/public/anchor-counter/
+tests/fixtures/public/anchor-examples/
+tests/fixtures/public/sealevel-attacks/
+tests/fixtures/public/anchor-zero-copy/
+
+# Insta snapshot review files
+*.pending-snap
+
+# Environment
+.env
+.env.local

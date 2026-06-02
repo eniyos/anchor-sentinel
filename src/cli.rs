@@ -1,0 +1,65 @@
+//! CLI argument definitions.
+
+use clap::{Parser, Subcommand, ValueEnum};
+
+use crate::engine::Severity;
+
+#[derive(Parser, Debug)]
+#[command(name = "sentinel", version, about = "Static security analysis for Anchor programs")]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Scan an Anchor project for security issues.
+    Scan {
+        /// Path to the Anchor project (the directory containing `Anchor.toml`).
+        path: String,
+
+        /// Emit JSON instead of human-readable output.
+        #[arg(long)]
+        json: bool,
+
+        /// Exit with a non-zero status if any finding at or above the min
+        /// severity is found. Useful in CI.
+        #[arg(long)]
+        strict: bool,
+
+        /// Comma-separated list of rule ids to skip.
+        #[arg(long, value_delimiter = ',')]
+        ignore: Vec<String>,
+
+        /// Minimum severity to report. Lower-severity findings are hidden.
+        #[arg(long, value_enum)]
+        min_severity: Option<MinSeverity>,
+    },
+
+    /// List all registered rules.
+    Rules,
+
+    /// Print the sentinel version.
+    Version,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum MinSeverity {
+    Info,
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl MinSeverity {
+    pub fn into_severity(self) -> Severity {
+        match self {
+            MinSeverity::Info => Severity::Info,
+            MinSeverity::Low => Severity::Low,
+            MinSeverity::Medium => Severity::Medium,
+            MinSeverity::High => Severity::High,
+            MinSeverity::Critical => Severity::Critical,
+        }
+    }
+}

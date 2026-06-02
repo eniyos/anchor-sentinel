@@ -1,0 +1,17 @@
+{
+  "version": "0.0.0",
+  "name": "legacy",
+  "instructions": [
+    {
+      "name": "setAdmin",
+      "accounts": [
+        { "name": "currentAdmin", "isMut": false, "isSigner": true },
+        { "name": "newAdmin",     "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    }
+  ],
+  "types": [],
+  "events": [],
+  "errors": []
+}

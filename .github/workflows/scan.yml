@@ -1,0 +1,34 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  anchor-sentinel:
+    name: Anchor Sentinel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Anchor CLI
+        run: npm install -g @coral-xyz/anchor-cli
+
+      - name: Build Anchor project
+        run: anchor build
+
+      - name: Run Anchor Sentinel
+        uses: ./.github/actions/scan
+        with:
+          working-directory: "."
+          fail-on-severity: high

@@ -118,7 +118,9 @@ fn severity_map(sev: Severity) -> (&'static str, f64) {
 
 /// Build the list of rule definitions from the registry.
 fn driver_rules() -> Vec<SarifRule> {
-    rules::registered_rules()
+    let mut rules = rules::registered_rules();
+    rules.sort_by_key(|&(id, _, _)| id);
+    rules
         .into_iter()
         .map(|(id, sev, desc)| {
             let (_level, security_severity) = severity_map(sev);
@@ -158,6 +160,11 @@ fn finding_to_result(f: &Finding) -> Result {
 
 /// Build a full SARIF log from a list of findings.
 pub fn render(findings: &[Finding]) -> String {
+    let mut sorted = findings.to_vec();
+    sorted.sort_by(|a, b| {
+        (&a.rule, &a.instruction, &a.account, a.line, a.column)
+            .cmp(&(&b.rule, &b.instruction, &b.account, b.line, b.column))
+    });
     let log = SarifLog {
         schema: "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
         version: "2.1.0",
@@ -170,7 +177,7 @@ pub fn render(findings: &[Finding]) -> String {
                     rules: driver_rules(),
                 },
             },
-            results: findings.iter().map(finding_to_result).collect(),
+            results: sorted.iter().map(finding_to_result).collect(),
         }],
     };
     serde_json::to_string_pretty(&log).expect("SARIF JSON always serializes")

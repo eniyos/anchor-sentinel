@@ -1,20 +1,43 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 42
 expression: stripped
 ---
 {
   "findings": [
     {
-      "account": null,
-      "column": null,
-      "file": null,
-      "hint": "Verify that debited lamports are credited elsewhere, or add a rent-exempt minimum check: `require!(account.lamports() >= rent_exempt_min, ErrorCode::RentViolation)`.",
+      "account": "user",
+      "column": 4,
+      "file": "programs/vault/src/lib.rs",
+      "hint": "Type the fields as `Account<'info, T>` or use `#[account(mut)]` with `has_one` constraints to derive distinct addresses from seeds.",
       "instruction": "deposit",
-      "line": null,
-      "message": "Instruction `deposit` debits lamports from user, vault but shows no corresponding credit or CPI. This may violate lamports conservation or drop accounts below the rent-exempt minimum.",
+      "line": 38,
+      "message": "Instruction `deposit` has ≥2 mutable `AccountInfo` accounts (user, vault) — an attacker can pass the same pubkey for both. Debiting one also debits the other because they reference the same account.",
       "program": "vault",
-      "rule": "unchecked_balance_flow",
+      "rule": "duplicate_mutable_accounts",
+      "severity": "high"
+    },
+    {
+      "account": "user",
+      "column": 42,
+      "file": "programs/vault/src/lib.rs",
+      "hint": "Add a guard before the debit: `require!(user.lamports() >= amount, ErrorCode::InsufficientFunds)` or use `checked_sub`.",
+      "instruction": "deposit",
+      "line": 21,
+      "message": "Account `user` has lamports debited by `amount` in `deposit` without a preceding balance check. An attacker can drain the account by calling with `amount > account.lamports()`.",
+      "program": "vault",
+      "rule": "missing_balance_check",
+      "severity": "critical"
+    },
+    {
+      "account": "destination",
+      "column": 4,
+      "file": "programs/vault/src/lib.rs",
+      "hint": "Add `#[account(mut)]` to the field and set `writable: true` in the IDL.",
+      "instruction": "withdraw",
+      "line": 59,
+      "message": "Account `destination` on instruction `withdraw` is not declared mutable but its name implies a write target.",
+      "program": "vault",
+      "rule": "missing_mut",
       "severity": "medium"
     },
     {
@@ -42,16 +65,16 @@ expression: stripped
       "severity": "high"
     },
     {
-      "account": "destination",
+      "account": "authority",
       "column": 4,
       "file": "programs/vault/src/lib.rs",
-      "hint": "Add `#[account(mut)]` to the field and set `writable: true` in the IDL.",
-      "instruction": "withdraw",
-      "line": 59,
-      "message": "Account `destination` on instruction `withdraw` is not declared mutable but its name implies a write target.",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "deposit",
+      "line": 42,
+      "message": "Account `authority` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
       "program": "vault",
-      "rule": "missing_mut",
-      "severity": "medium"
+      "rule": "missing_signer",
+      "severity": "critical"
     },
     {
       "account": "user",
@@ -61,18 +84,6 @@ expression: stripped
       "instruction": "deposit",
       "line": 38,
       "message": "Account `user` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
-      "program": "vault",
-      "rule": "missing_signer",
-      "severity": "critical"
-    },
-    {
-      "account": "authority",
-      "column": 4,
-      "file": "programs/vault/src/lib.rs",
-      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
-      "instruction": "deposit",
-      "line": 42,
-      "message": "Account `authority` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
       "program": "vault",
       "rule": "missing_signer",
       "severity": "critical"
@@ -102,6 +113,18 @@ expression: stripped
       "severity": "critical"
     },
     {
+      "account": "destination",
+      "column": 4,
+      "file": "programs/vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "withdraw",
+      "line": 59,
+      "message": "Account `destination` on instruction `withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
       "account": "vault",
       "column": 4,
       "file": "programs/vault/src/lib.rs",
@@ -114,16 +137,16 @@ expression: stripped
       "severity": "critical"
     },
     {
-      "account": "destination",
-      "column": 4,
-      "file": "programs/vault/src/lib.rs",
-      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
-      "instruction": "withdraw",
-      "line": 59,
-      "message": "Account `destination` on instruction `withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "account": null,
+      "column": null,
+      "file": null,
+      "hint": "Verify that debited lamports are credited elsewhere, or add a rent-exempt minimum check: `require!(account.lamports() >= rent_exempt_min, ErrorCode::RentViolation)`.",
+      "instruction": "deposit",
+      "line": null,
+      "message": "Instruction `deposit` debits lamports from user, vault but shows no corresponding credit or CPI. This may violate lamports conservation or drop accounts below the rent-exempt minimum.",
       "program": "vault",
-      "rule": "missing_signer",
-      "severity": "critical"
+      "rule": "unchecked_balance_flow",
+      "severity": "medium"
     },
     {
       "account": null,
@@ -148,30 +171,6 @@ expression: stripped
       "program": "vault",
       "rule": "unsafe_arithmetic",
       "severity": "medium"
-    },
-    {
-      "account": "user",
-      "column": 4,
-      "file": "programs/vault/src/lib.rs",
-      "hint": "Type the fields as `Account<'info, T>` or use `#[account(mut)]` with `has_one` constraints to derive distinct addresses from seeds.",
-      "instruction": "deposit",
-      "line": 38,
-      "message": "Instruction `deposit` has ≥2 mutable `AccountInfo` accounts (user, vault) — an attacker can pass the same pubkey for both. Debiting one also debits the other because they reference the same account.",
-      "program": "vault",
-      "rule": "duplicate_mutable_accounts",
-      "severity": "high"
-    },
-    {
-      "account": "user",
-      "column": 42,
-      "file": "programs/vault/src/lib.rs",
-      "hint": "Add a guard before the debit: `require!(user.lamports() >= amount, ErrorCode::InsufficientFunds)` or use `checked_sub`.",
-      "instruction": "deposit",
-      "line": 21,
-      "message": "Account `user` has lamports debited by `amount` in `deposit` without a preceding balance check. An attacker can drain the account by calling with `amount > account.lamports()`.",
-      "program": "vault",
-      "rule": "missing_balance_check",
-      "severity": "critical"
     }
   ],
   "summary": {

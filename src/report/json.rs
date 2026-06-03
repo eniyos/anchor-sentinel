@@ -21,15 +21,31 @@ pub struct Summary {
 }
 
 pub fn build_report(findings: &[Finding]) -> Report {
+    // Sort findings deterministically so JSON snapshots are stable across
+    // platforms. The emission order from the rule engine depends on
+    // `inventory` plugin registration, which the linker lays out differently
+    // on macOS vs Linux; without a sort, CI fails with snapshot drift even
+    // when the rule output is otherwise identical.
+    let mut sorted: Vec<Finding> = findings.to_vec();
+    sorted.sort_by(|a, b| {
+        (&a.rule, &a.instruction, &a.account, a.line, a.column).cmp(&(
+            &b.rule,
+            &b.instruction,
+            &b.account,
+            b.line,
+            b.column,
+        ))
+    });
+
     let mut summary = Summary {
         critical: 0,
         high: 0,
         medium: 0,
         low: 0,
         info: 0,
-        total: findings.len(),
+        total: sorted.len(),
     };
-    for f in findings {
+    for f in &sorted {
         match f.severity {
             Severity::Critical => summary.critical += 1,
             Severity::High => summary.high += 1,
@@ -39,7 +55,7 @@ pub fn build_report(findings: &[Finding]) -> Report {
         }
     }
     Report {
-        findings: findings.to_vec(),
+        findings: sorted,
         summary,
     }
 }

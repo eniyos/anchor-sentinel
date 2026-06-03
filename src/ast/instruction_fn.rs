@@ -433,7 +433,9 @@ fn is_lamports_dereference_mut(e: &Expr) -> bool {
         Expr::Paren(p) => is_lamports_dereference_mut(&p.expr),
         Expr::MethodCall(m) => {
             let method = m.method.to_string();
-            method == "try_borrow_mut_lamports" || method == "lamports" || is_lamports_dereference_mut(&m.receiver)
+            method == "try_borrow_mut_lamports"
+                || method == "lamports"
+                || is_lamports_dereference_mut(&m.receiver)
         }
         _ => false,
     }
@@ -559,7 +561,9 @@ fn extract_cpi_target(_tokens: &proc_macro2::TokenStream) -> String {
 
 /// Convert an expression to a short string representation for the amount hint.
 fn expr_to_string(e: &Expr) -> String {
-    e.to_token_stream().to_string().replace(char::is_whitespace, "")
+    e.to_token_stream()
+        .to_string()
+        .replace(char::is_whitespace, "")
 }
 
 // ── Existing arithmetic type helpers ─────────────────────────────────────

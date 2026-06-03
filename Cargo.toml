@@ -47,3 +47,10 @@ insta = { version = "1.40", features = ["json"] }
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# Disable wasm-opt: the bundled version of binaryen used by wasm-pack
+# rejects the memory.copy operations produced by recent rustc/LLVM
+# because they don't carry the bulk-memory feature flag. The build
+# still produces a working .wasm file — we just skip the size pass.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

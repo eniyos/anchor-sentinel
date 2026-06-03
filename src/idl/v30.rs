@@ -19,6 +19,9 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct IdlFile {
+    /// IDL version string. We only branch on the major; the string is
+    /// kept for diagnostics.
+    #[allow(dead_code)]
     pub version: String,
     pub name: String,
     pub instructions: Vec<Instruction>,
@@ -48,7 +51,10 @@ pub struct AccountMeta {
     pub writable: bool,
     #[serde(default)]
     pub signer: bool,
+    /// Whether this account is optional (i.e. wrapped in `Option<…>`
+    /// on the handler). Reserved for a future rule; not surfaced today.
     #[serde(default)]
+    #[allow(dead_code)]
     pub optional: bool,
     #[serde(default)]
     pub address: Option<String>,
@@ -102,10 +108,16 @@ pub struct Ty {
 
 #[derive(Debug, Deserialize)]
 pub struct TyBody {
+    /// `"struct"` or `"enum"`. Recorded for diagnostics; the rule
+    /// engine branches on field presence, not on this string.
+    #[allow(dead_code)]
     pub kind: String,
     #[serde(default)]
     pub fields: Vec<Field>,
+    /// Enum variants — reserved for a future `enum_canonicalization`
+    /// rule.
     #[serde(default)]
+    #[allow(dead_code)]
     pub variants: Vec<serde_json::Value>,
 }
 
@@ -119,7 +131,10 @@ pub struct Field {
 #[derive(Debug, Deserialize)]
 pub struct Event {
     pub name: String,
+    /// 8-byte event discriminator. Recorded for diagnostics; not
+    /// surfaced into the IR.
     #[serde(default)]
+    #[allow(dead_code)]
     pub discriminator: Option<Vec<u8>>,
 }
 

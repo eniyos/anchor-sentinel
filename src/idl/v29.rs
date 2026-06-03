@@ -21,6 +21,9 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct IdlFile {
+    /// IDL version string. We only branch on the major; the string is
+    /// kept for diagnostics.
+    #[allow(dead_code)]
     pub version: String,
     pub name: String,
     pub instructions: Vec<Instruction>,
@@ -76,7 +79,10 @@ pub struct TyBody {
     pub kind: String,
     #[serde(default)]
     pub fields: Vec<Field>,
+    /// Enum variants — not surfaced into the IR today; reserved for a
+    /// future `enum_canonicalization` rule.
     #[serde(default)]
+    #[allow(dead_code)]
     pub variants: Vec<serde_json::Value>,
 }
 

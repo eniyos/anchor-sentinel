@@ -1,0 +1,404 @@
+---
+source: tests/snapshots.rs
+assertion_line: 89
+expression: stripped
+---
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ""
+                },
+                "region": {
+                  "startColumn": 1,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Instruction `deposit` debits lamports from user, vault but shows no corresponding credit or CPI. This may violate lamports conservation or drop accounts below the rent-exempt minimum."
+          },
+          "ruleId": "unchecked_balance_flow"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 45
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `vault` on instruction `deposit` is mutable but typed as `AccountInfo` and lacks an `#[account(owner = …)]` constraint. Runtime code can deserialize arbitrary data into it."
+          },
+          "ruleId": "missing_ownership"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 45
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `vault` on instruction `withdraw` is mutable but typed as `AccountInfo` and lacks an `#[account(owner = …)]` constraint. Runtime code can deserialize arbitrary data into it."
+          },
+          "ruleId": "missing_ownership"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 59
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `destination` on instruction `withdraw` is not declared mutable but its name implies a write target."
+          },
+          "ruleId": "missing_mut"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 38
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `user` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check."
+          },
+          "ruleId": "missing_signer"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 42
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `authority` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check."
+          },
+          "ruleId": "missing_signer"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 45
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `vault` on instruction `deposit` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check."
+          },
+          "ruleId": "missing_signer"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 42
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `authority` on instruction `withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check."
+          },
+          "ruleId": "missing_signer"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 45
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `vault` on instruction `withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check."
+          },
+          "ruleId": "missing_signer"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 59
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `destination` on instruction `withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check."
+          },
+          "ruleId": "missing_signer"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 41,
+                  "startLine": 19
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Unchecked `+` between `vault` and `amount` — wrap in `checked_+`, `saturating_+`, or `overflowing_+` to avoid panics on overflow."
+          },
+          "ruleId": "unsafe_arithmetic"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 41,
+                  "startLine": 29
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Unchecked `-` between `vault` and `amount` — wrap in `checked_-`, `saturating_-`, or `overflowing_-` to avoid panics on overflow."
+          },
+          "ruleId": "unsafe_arithmetic"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 4,
+                  "startLine": 38
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Instruction `deposit` has ≥2 mutable `AccountInfo` accounts (user, vault) — an attacker can pass the same pubkey for both. Debiting one also debits the other because they reference the same account."
+          },
+          "ruleId": "duplicate_mutable_accounts"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "programs/vault/src/lib.rs"
+                },
+                "region": {
+                  "startColumn": 42,
+                  "startLine": 21
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Account `user` has lamports debited by `amount` in `deposit` without a preceding balance check. An attacker can drain the account by calling with `amount > account.lamports()`."
+          },
+          "ruleId": "missing_balance_check"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/eniyanyosuva/anchor-sentinel",
+          "name": "anchor-sentinel",
+          "rules": [
+            {
+              "id": "missing_bump_seed_canonicalization",
+              "name": "missing_bump_seed_canonicalization",
+              "properties": {
+                "security-severity": 8.0
+              },
+              "shortDescription": {
+                "text": "PDA bump constraint uses a non-canonical value instead of `ctx.bumps`"
+              }
+            },
+            {
+              "id": "unchecked_balance_flow",
+              "name": "unchecked_balance_flow",
+              "properties": {
+                "security-severity": 5.5
+              },
+              "shortDescription": {
+                "text": "Potential lamports conservation violation — debits without matching credits"
+              }
+            },
+            {
+              "id": "pda_misconfig",
+              "name": "pda_misconfig",
+              "properties": {
+                "security-severity": 8.0
+              },
+              "shortDescription": {
+                "text": "PDA seeds without an explicit, canonical bump"
+              }
+            },
+            {
+              "id": "missing_ownership",
+              "name": "missing_ownership",
+              "properties": {
+                "security-severity": 8.0
+              },
+              "shortDescription": {
+                "text": "Mutable account typed as `AccountInfo` without an explicit `owner` constraint"
+              }
+            },
+            {
+              "id": "missing_mut",
+              "name": "missing_mut",
+              "properties": {
+                "security-severity": 5.5
+              },
+              "shortDescription": {
+                "text": "Account appears to be a write target but is not marked mutable"
+              }
+            },
+            {
+              "id": "missing_signer",
+              "name": "missing_signer",
+              "properties": {
+                "security-severity": 9.5
+              },
+              "shortDescription": {
+                "text": "Account appears to require authorization but lacks a signer check"
+              }
+            },
+            {
+              "id": "lamports_drain",
+              "name": "lamports_drain",
+              "properties": {
+                "security-severity": 8.0
+              },
+              "shortDescription": {
+                "text": "Lamports explicitly zeroed without proper authorization"
+              }
+            },
+            {
+              "id": "unsafe_arithmetic",
+              "name": "unsafe_arithmetic",
+              "properties": {
+                "security-severity": 5.5
+              },
+              "shortDescription": {
+                "text": "Detects unchecked +, -, *, /, % on u64/u128/i64"
+              }
+            },
+            {
+              "id": "duplicate_mutable_accounts",
+              "name": "duplicate_mutable_accounts",
+              "properties": {
+                "security-severity": 8.0
+              },
+              "shortDescription": {
+                "text": "Multiple mutable `AccountInfo` args could reference the same pubkey"
+              }
+            },
+            {
+              "id": "missing_balance_check",
+              "name": "missing_balance_check",
+              "properties": {
+                "security-severity": 9.5
+              },
+              "shortDescription": {
+                "text": "Lamports debited without a preceding balance check"
+              }
+            }
+          ],
+          "version": "0.1.0"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

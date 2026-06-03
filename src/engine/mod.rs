@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::idl::ir::ProgramIr;
 
 /// 5-level severity scale. Ordered low → high so comparisons work.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
@@ -34,6 +32,10 @@ impl Severity {
         }
     }
 
+    /// Parse a severity from a string. Reserved for the upcoming
+    /// `--min-severity` config-file form; the current CLI uses `MinSeverity`
+    /// directly.
+    #[allow(dead_code)]
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_ascii_lowercase().as_str() {
             "info" => Some(Severity::Info),
@@ -183,10 +185,44 @@ pub struct AstHint {
     pub column: usize,
 }
 
+impl AstHint {
+    /// Borrow the hint's source location as a `SourceLocation`. This is the
+    /// form rules want when stamping a `Finding` so that the report can
+    /// include `file:line:column` (currently the rule layer leaves these
+    /// fields as `null` for non-`unsafe_arithmetic` rules — task #1 fixes
+    /// that by routing every `AccountsField` hint through this helper).
+    pub fn location(&self) -> SourceLocation {
+        SourceLocation {
+            file: self.file.clone(),
+            line: self.line,
+            column: self.column,
+        }
+    }
+}
+
+/// Resolved source location, ready to be stamped onto a `Finding`.
+#[derive(Debug, Clone)]
+pub struct SourceLocation {
+    pub file: String,
+    pub line: usize,
+    pub column: usize,
+}
+
+impl SourceLocation {
+    pub fn stamp(self, b: FindingBuilder) -> FindingBuilder {
+        b.file(self.file).line(self.line).column(self.column)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum AstHintKind {
     /// A field of an `#[derive(Accounts)]` struct.
     AccountsField {
+        /// Owning struct name. Reserved for cross-struct linking
+        /// (a future task will key the field hint index by
+        /// `(instruction_name, struct_name, field_name)` instead of
+        /// `field_name` alone).
+        #[allow(dead_code)]
         struct_name: String,
         field_name: String,
         /// "Signer", "Account<'info, T>", "AccountInfo", "SystemAccount", etc.
@@ -196,7 +232,12 @@ pub enum AstHintKind {
     },
     /// A `pub fn` in an `#[program]` impl block.
     InstructionHandler {
+        /// Owning struct name. Reserved for the Week-4+ cross-link
+        /// between IDL instructions and AST handlers.
+        #[allow(dead_code)]
         struct_name: String,
+        /// Handler fn name. Reserved for the same cross-link.
+        #[allow(dead_code)]
         fn_name: String,
     },
     /// An unchecked arithmetic op (`+`, `-`, `*`, `/`, `%`).
@@ -204,6 +245,34 @@ pub enum AstHintKind {
         op: String,
         lhs_ty: String,
         rhs_ty: String,
+    },
+    /// A lamports subtraction (debit) on an account.
+    LamportsDebit {
+        account: String,
+        amount_expr: String,
+        seq: usize,
+    },
+    /// A lamports addition (credit) on an account.
+    LamportsCredit {
+        account: String,
+        amount_expr: String,
+        seq: usize,
+    },
+    /// A guard/comparison involving lamports/balance (if, require!, >=, etc.).
+    BalanceCheck {
+        account: String,
+        check_type: String,
+        seq: usize,
+    },
+    /// Lamports explicitly zeroed (`lamports = 0`, `set_lamports(0)`).
+    LamportsZero {
+        account: String,
+        seq: usize,
+    },
+    /// CPI that may transfer lamports (`invoke` / `invoke_signed`).
+    CpiTransfer {
+        target: String,
+        seq: usize,
     },
 }
 
@@ -226,4 +295,26 @@ pub fn run_all_rules(ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         out.extend(rule.check(ctx)?);
     }
     Ok(out)
+}
+
+/// Build a quick lookup from field_name → the AST hint that first declared
+/// it. Rules use this to stamp source locations onto findings, since IDL
+/// alone carries no `file:line:column` for individual accounts.
+///
+/// In the rare case where the same field name appears on multiple structs
+/// (e.g. `authority` on both `Deposit` and `Withdraw`) the first hint wins.
+/// That's acceptable for a static analysis tool — the message says
+/// "Account `authority` on instruction `withdraw`" and the line points at
+/// one of the declarations; the user can fix the right one from the
+/// instruction name alone.
+pub fn field_hint_index(ctx: &AnalysisContext) -> std::collections::HashMap<String, AstHint> {
+    let mut index = std::collections::HashMap::new();
+    for hint in &ctx.ast_hints {
+        if let AstHintKind::AccountsField { field_name, .. } = &hint.kind {
+            index
+                .entry(field_name.clone())
+                .or_insert_with(|| hint.clone());
+        }
+    }
+    index
 }

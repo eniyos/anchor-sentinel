@@ -39,8 +39,20 @@ fn parse_file(path: &Path) -> Option<Vec<AstHint>> {
     av.visit_file(&ast);
     fv.visit_file(&ast);
 
-    let mut hints = Vec::new();
-    for raw in accounts.hints.into_iter().chain(fns.hints.into_iter()) {
+    // Each visitor stores its own private `RawHint` type, so we resolve
+    // spans to engine-level `AstHint` values per-visitor and then chain
+    // those. The `file` is the same for both, and `start.line`/`column`
+    // are 1-based because `proc_macro2` reports them that way.
+    let mut hints: Vec<AstHint> = Vec::new();
+    for raw in accounts.hints {
+        hints.push(AstHint {
+            kind: raw.kind,
+            file: file.clone(),
+            line: raw.start.line,
+            column: raw.start.column,
+        });
+    }
+    for raw in fns.hints {
         hints.push(AstHint {
             kind: raw.kind,
             file: file.clone(),

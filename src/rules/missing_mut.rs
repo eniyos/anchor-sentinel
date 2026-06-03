@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
 
 const DEST_NAMES: &[&str] = &[
     "destination",
@@ -36,6 +36,7 @@ impl Rule for MissingMut {
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         // Build a set of (field_name) where the AST has `#[account(mut)]`.
         let mut ast_mut: HashSet<String> = HashSet::new();
+        let hint_index = field_hint_index(ctx);
         for hint in &ctx.ast_hints {
             if let AstHintKind::AccountsField {
                 field_name,
@@ -65,21 +66,22 @@ impl Rule for MissingMut {
                 if !DEST_NAMES.iter().any(|n| lname == *n) {
                     continue;
                 }
-                out.push(
-                    Finding::builder(
-                        self.id(),
-                        self.severity(),
-                        format!(
-                            "Account `{}` on instruction `{}` is not declared mutable but its name implies a write target.",
-                            acct.name, ix.name
-                        ),
-                    )
-                    .program(&ctx.ir.name)
-                    .instruction(&ix.name)
-                    .account(&acct.name)
-                    .hint("Add `#[account(mut)]` to the field and set `writable: true` in the IDL.")
-                    .build(),
-                );
+                let mut b = Finding::builder(
+                    self.id(),
+                    self.severity(),
+                    format!(
+                        "Account `{}` on instruction `{}` is not declared mutable but its name implies a write target.",
+                        acct.name, ix.name
+                    ),
+                )
+                .program(&ctx.ir.name)
+                .instruction(&ix.name)
+                .account(&acct.name)
+                .hint("Add `#[account(mut)]` to the field and set `writable: true` in the IDL.");
+                if let Some(h) = hint_index.get(&acct.name) {
+                    b = h.location().stamp(b);
+                }
+                out.push(b.build());
             }
         }
         Ok(out)

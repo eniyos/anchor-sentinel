@@ -32,23 +32,28 @@ impl Rule for UnsafeArithmetic {
             if let AstHintKind::UnsafeArithmetic { op, lhs_ty, rhs_ty } = &hint.kind {
                 // Dedupe per (file, op, lhs_ty, rhs_ty) so a tight loop with
                 // 50 additions doesn't flood the report.
-                let key = (hint.file.clone(), op.clone(), lhs_ty.clone(), rhs_ty.clone());
+                let key = (
+                    hint.file.clone(),
+                    op.clone(),
+                    lhs_ty.clone(),
+                    rhs_ty.clone(),
+                );
                 if !seen.insert(key) {
                     continue;
                 }
-                out.push(
-                    Finding::builder(
-                        self.id(),
-                        self.severity(),
-                        format!(
-                            "Unchecked `{op}` between `{lhs_ty}` and `{rhs_ty}` — wrap in `checked_{op}`, `saturating_{op}`, or `overflowing_{op}` to avoid panics on overflow."
-                        ),
-                    )
-                    .program(&ctx.ir.name)
-                    .file(&hint.file)
-                    .hint(format!("Replace `a {op} b` with `a.checked_{op}(b).unwrap()` or use a checked-math helper."))
-                    .build(),
-                );
+                let mut b = Finding::builder(
+                    self.id(),
+                    self.severity(),
+                    format!(
+                        "Unchecked `{op}` between `{lhs_ty}` and `{rhs_ty}` — wrap in `checked_{op}`, `saturating_{op}`, or `overflowing_{op}` to avoid panics on overflow."
+                    ),
+                )
+                .program(&ctx.ir.name)
+                .hint(format!(
+                    "Replace `a {op} b` with `a.checked_{op}(b).unwrap()` or use a checked-math helper."
+                ));
+                b = hint.location().stamp(b);
+                out.push(b.build());
             }
         }
         Ok(out)

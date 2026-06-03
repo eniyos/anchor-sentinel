@@ -15,7 +15,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
 
 const SUSPECT_NAMES: &[&str] = &[
     "authority",
@@ -46,6 +46,7 @@ impl Rule for MissingSigner {
         // or with an explicit `signer` constraint.
         let mut ast_signed: HashSet<String> = HashSet::new();
         let mut ast_account_info: HashSet<String> = HashSet::new();
+        let hint_index = field_hint_index(ctx);
         for hint in &ctx.ast_hints {
             if let AstHintKind::AccountsField {
                 field_name,
@@ -95,14 +96,15 @@ impl Rule for MissingSigner {
                     )
                 };
 
-                out.push(
-                    Finding::builder(self.id(), self.severity(), reason)
-                        .program(&ctx.ir.name)
-                        .instruction(&ix.name)
-                        .account(&acct.name)
-                        .hint(hint)
-                        .build(),
-                );
+                let mut b = Finding::builder(self.id(), self.severity(), reason)
+                    .program(&ctx.ir.name)
+                    .instruction(&ix.name)
+                    .account(&acct.name)
+                    .hint(hint);
+                if let Some(h) = hint_index.get(&acct.name) {
+                    b = h.location().stamp(b);
+                }
+                out.push(b.build());
             }
         }
         Ok(out)

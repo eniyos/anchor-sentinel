@@ -26,6 +26,10 @@ pub struct FileAccounts {
 }
 
 pub struct AccountsStructVisitor<'a> {
+    /// File path the visitor is attached to. Carried on the struct for
+    /// future diagnostics (e.g. richer per-finding error messages) but
+    /// the current visitor body doesn't read it.
+    #[allow(dead_code)]
     pub file: &'a str,
     pub out: &'a mut FileAccounts,
 }

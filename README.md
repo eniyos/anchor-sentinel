@@ -4,6 +4,13 @@
 > vulnerabilities — missing signer checks, missing ownership constraints,
 > missing mutability, weak PDAs, unsafe arithmetic — **before deployment**.
 
+## Quickstart
+
+```bash
+cargo install anchor-sentinel
+sentinel scan ./my-program --format sarif
+```
+
 ```
 [HIGH] missing_signer
   instruction: withdraw
@@ -25,20 +32,20 @@ Anchor Sentinel is that scanner. Local, fast, open-source, JSON-friendly.
 - [x] CLI: `sentinel scan <path> [--json] [--strict] [--ignore …] [--min-severity …]`
 - [x] CLI: `sentinel rules` — list registered rules
 - [x] IDL parser: auto-detects Anchor ≤ 0.29 (legacy) and ≥ 0.30 (modern)
-- [x] Rule engine: 5 rules registered via plugin registry (`inventory`)
+- [x] Rule engine: 10 rules registered via plugin registry (`inventory`)
 - [x] AST visitors: `#[derive(Accounts)]` structs and `#[program] mod/impl` bodies
 - [x] Reports: pretty text + JSON, with severity summary and stable schema
 - [x] Loader: discovers `target/idl/*.json` and `programs/**/src/lib.rs`
 - [x] Public-fixture fetch script (with in-tree fallbacks)
 - [x] JSON snapshot tests (`insta`) for the report shape
 - [ ] Public-fixture vendoring (SPL / anchor examples) — script ready, network-gated
-- [ ] Source `file:line:column` resolution from `proc_macro2::Span` (currently `null`)
-- [ ] GitHub Actions CI workflow
+- [x] Source `file:line:column` resolution from `proc_macro2::Span`.
+- [x] GitHub Actions CI workflow
 
 ## Install
 
 ```bash
-cargo install --path /Users/enjo/anchor-sentinel
+cargo install anchor-sentinel
 ```
 
 ## Usage
@@ -48,14 +55,26 @@ You need `target/idl/<program>.json` present — `anchor build` will generate
 that for you.
 
 ```bash
-# Human-readable scan
+# Human-readable scan (default)
 sentinel scan .
 
 # Machine-readable, for CI
-sentinel scan . --json
+sentinel scan . --format json
+
+# SARIF output for GitHub Code Scanning / VS Code
+sentinel scan . --format sarif
 
 # Treat any non-info finding as a build failure
 sentinel scan . --strict
+
+# Skip a rule
+sentinel scan . --ignore missing_mut
+
+# Only show high/critical
+sentinel scan . --min-severity high
+
+# List all registered rules
+sentinel rules
 
 # Skip a rule
 sentinel scan . --ignore missing_mut
@@ -80,10 +99,15 @@ sentinel rules
 | Rule                 | Severity | Source | Notes                                                                                              |
 | -------------------- | -------- | ------ | -------------------------------------------------------------------------------------------------- |
 | `missing_signer`     | Critical | IDL+AST | High-confidence when the field is typed `AccountInfo`; name-based fallback when AST is absent.    |
+| `missing_balance_check` | Critical | AST | Lamports debited (`-=`, `try_borrow_mut_lamports`) without a preceding `require!` or `>=` guard. |
+| `duplicate_mutable_accounts` | High | IDL+AST | ≥2 mutable `AccountInfo` args in the same instruction — confusion attack vector. |
 | `missing_ownership`  | High     | IDL+AST | Flags mutable `AccountInfo` on `vault`/`pool`/`state` accounts lacking an `owner` constraint.    |
+| `lamports_drain`     | High     | IDL+AST | Lamports explicitly zeroed (`lamports = 0`, `set_lamports(0)`) without authorization.            |
+| `missing_bump_seed_canonicalization` | High | AST | PDA bump set to user-controlled value instead of `ctx.bumps` or canonical form. |
+| `pda_misconfig`      | High     | IDL+AST | PDA seeds with no `bump`, or `bump = <ident>` trap (Sealevel-Attacks pattern).                    |
 | `unsafe_arithmetic`  | Medium   | AST     | `+ - * / %` on integer types in `#[program]` handlers, not wrapped in `checked_*`/`saturating_*`. |
 | `missing_mut`        | Medium   | IDL+AST | `destination`/`recipient`/`to` accounts not declared `#[account(mut)]`.                            |
-| `pda_misconfig`      | High     | IDL+AST | PDA seeds with no `bump`, or `bump = <ident>` trap (Sealevel-Attacks pattern).                    |
+| `unchecked_balance_flow` | Medium | IDL+AST | Writable accounts debited without matching credit (lamports conservation heuristic).              |
 
 ## Architecture
 
@@ -117,7 +141,8 @@ cargo test
 The test suite runs the compiled `sentinel` binary against:
 
 - `tests/fixtures/vault-vulnerable/` — a vulnerable Anchor vault (signer
-  escape hatches, unchecked arithmetic). Should produce ~10 findings.
+  escape hatches, unchecked arithmetic, missing balance checks, duplicate mutable accounts).
+  Should produce ~14 findings.
 - `tests/fixtures/vault-clean/` — a clean Anchor vault. Should report
   zero findings.
 - `tests/fixtures/legacy-029/` — an Anchor ≤ 0.29 program (legacy IDL).
@@ -126,6 +151,9 @@ The test suite runs the compiled `sentinel` binary against:
   with `bump = bump` trap and unchecked subtraction. Should flag both.
 - `tests/fixtures/public/pda-secure/` — the same vault, fixed. Should
   report zero findings.
+- `tests/fixtures/balance-drain-vulnerable/` — a vault with balance-related
+  vulnerabilities (missing balance checks, lamports drain via `set_lamports(0)`).
+  Should flag `missing_balance_check` and `lamports_drain` rules.
 - 4 JSON snapshot tests via `insta` to lock the report schema.
 
 ### Vendoring public fixtures (optional)
@@ -139,7 +167,9 @@ For higher-fidelity integration samples, fetch real Anchor programs:
 This clones `anchor-counter`, `anchor-examples`, `sealevel-attacks`, and
 `anchor-zero-copy` (depth 1) into `tests/fixtures/public/`. The script
 is idempotent and network-gated — the in-tree fixtures cover the same
-patterns when offline.
+patterns when offline. **The script is optional; CI and `cargo test`
+do not require it.** Running it pulls several hundred MB of git history
+and is intended for local development only.
 
 ## License
 

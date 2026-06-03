@@ -14,7 +14,7 @@ use anyhow::{anyhow, Context, Result};
 use std::path::Path;
 
 use ir::{
-    AccountDef, EventDef, ErrorDef, IdlVersion, Instruction, InstructionAccount, InstructionArg,
+    AccountDef, ErrorDef, EventDef, IdlVersion, Instruction, InstructionAccount, InstructionArg,
     PdaDerivation, PdaSeed, ProgramIr, TypeDef, TypeField,
 };
 
@@ -102,7 +102,10 @@ fn convert_v30(idl: v30::IdlFile, source_path: &str) -> ProgramIr {
             args: ix
                 .args
                 .into_iter()
-                .map(|a| InstructionArg { name: a.name, ty: a.ty })
+                .map(|a| InstructionArg {
+                    name: a.name,
+                    ty: a.ty,
+                })
                 .collect(),
             discriminator: ix.discriminator,
         })
@@ -121,19 +124,18 @@ fn convert_v30(idl: v30::IdlFile, source_path: &str) -> ProgramIr {
         .types
         .into_iter()
         .map(|t| {
-            let fields = t
-                .ty
-                .as_ref()
-                .map(|b| {
-                    b.fields
-                        .iter()
-                        .map(|f| TypeField {
-                            name: f.name.clone(),
-                            ty: f.ty.clone(),
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+            let fields =
+                t.ty.as_ref()
+                    .map(|b| {
+                        b.fields
+                            .iter()
+                            .map(|f| TypeField {
+                                name: f.name.clone(),
+                                ty: f.ty.clone(),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
             TypeDef {
                 name: t.name,
                 kind: t.kind,
@@ -190,7 +192,10 @@ fn convert_v29(idl: v29::IdlFile, source_path: &str) -> ProgramIr {
             args: ix
                 .args
                 .into_iter()
-                .map(|a| InstructionArg { name: a.name, ty: a.ty })
+                .map(|a| InstructionArg {
+                    name: a.name,
+                    ty: a.ty,
+                })
                 .collect(),
             discriminator: None,
         })
@@ -215,7 +220,10 @@ fn convert_v29(idl: v29::IdlFile, source_path: &str) -> ProgramIr {
                 .ty
                 .fields
                 .into_iter()
-                .map(|f| TypeField { name: f.name, ty: f.ty })
+                .map(|f| TypeField {
+                    name: f.name,
+                    ty: f.ty,
+                })
                 .collect(),
         })
         .collect();

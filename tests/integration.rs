@@ -1,7 +1,6 @@
 //! End-to-end integration tests for the `sentinel` CLI.
 
 use assert_cmd::Command;
-use assert_cmd::cargo::CommandCargoExt;
 use predicates::prelude::*;
 
 /// `Command::cargo_bin` (from `assert_cmd`) is the recommended way to locate
@@ -13,8 +12,8 @@ fn sentinel() -> Command {
 
 #[test]
 fn vulnerable_vault_triggers_findings() {
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/vault-vulnerable");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-vulnerable");
     let assert = sentinel()
         .args(["scan", fixture.to_str().unwrap()])
         .assert()
@@ -37,10 +36,10 @@ fn vulnerable_vault_triggers_findings() {
 fn vulnerable_vault_ast_unsafe_arithmetic() {
     // The vulnerable lib.rs uses raw `+` and `-` on u64 lamports — the
     // AST visitor should pick those up.
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/vault-vulnerable");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-vulnerable");
     let output = sentinel()
-        .args(["scan", fixture.to_str().unwrap(), "--json"])
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
         .output()
         .expect("scan ran");
     assert!(output.status.success(), "scan should succeed");
@@ -56,8 +55,8 @@ fn vulnerable_vault_ast_unsafe_arithmetic() {
 
 #[test]
 fn clean_vault_has_no_idl_findings() {
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/vault-clean");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-clean");
     let assert = sentinel()
         .args(["scan", fixture.to_str().unwrap()])
         .assert()
@@ -72,8 +71,8 @@ fn clean_vault_has_no_idl_findings() {
 
 #[test]
 fn legacy_v29_idl_is_parsed() {
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/legacy-029");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/legacy-029");
     sentinel()
         .args(["scan", fixture.to_str().unwrap()])
         .assert()
@@ -83,10 +82,10 @@ fn legacy_v29_idl_is_parsed() {
 
 #[test]
 fn json_output_is_valid_json_with_findings_array() {
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/vault-vulnerable");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-vulnerable");
     let output = sentinel()
-        .args(["scan", fixture.to_str().unwrap(), "--json"])
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
         .output()
         .expect("scan ran");
 
@@ -103,8 +102,8 @@ fn json_output_is_valid_json_with_findings_array() {
 
 #[test]
 fn strict_mode_fails_on_findings() {
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/vault-vulnerable");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-vulnerable");
     sentinel()
         .args(["scan", fixture.to_str().unwrap(), "--strict"])
         .assert()
@@ -112,7 +111,7 @@ fn strict_mode_fails_on_findings() {
 }
 
 #[test]
-fn rules_subcommand_lists_all_five() {
+fn rules_subcommand_lists_all_rules() {
     sentinel()
         .args(["rules"])
         .assert()
@@ -121,7 +120,12 @@ fn rules_subcommand_lists_all_five() {
         .stdout(predicate::str::contains("missing_ownership"))
         .stdout(predicate::str::contains("unsafe_arithmetic"))
         .stdout(predicate::str::contains("missing_mut"))
-        .stdout(predicate::str::contains("pda_misconfig"));
+        .stdout(predicate::str::contains("pda_misconfig"))
+        .stdout(predicate::str::contains("missing_balance_check"))
+        .stdout(predicate::str::contains("lamports_drain"))
+        .stdout(predicate::str::contains("unchecked_balance_flow"))
+        .stdout(predicate::str::contains("missing_bump_seed_canonicalization"))
+        .stdout(predicate::str::contains("duplicate_mutable_accounts"));
 }
 
 #[test]
@@ -140,13 +144,16 @@ fn public_pda_insecure_triggers_pda_misconfig() {
     // pattern: a `bump = bump` argument trap and a no-bump seeds constraint.
     // Both should be flagged by pda_misconfig, and the unchecked `-` should
     // be flagged by unsafe_arithmetic.
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/public/pda-insecure");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/public/pda-insecure");
     let output = sentinel()
-        .args(["scan", fixture.to_str().unwrap(), "--json"])
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
         .output()
         .expect("scan ran");
-    assert!(output.status.success(), "scan should not error on the fixture");
+    assert!(
+        output.status.success(),
+        "scan should not error on the fixture"
+    );
     let stdout = String::from_utf8(output.stdout).unwrap();
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let arr = v["findings"].as_array().unwrap();
@@ -163,11 +170,61 @@ fn public_pda_insecure_triggers_pda_misconfig() {
 
 #[test]
 fn public_pda_secure_has_no_findings() {
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/public/pda-secure");
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/public/pda-secure");
     sentinel()
         .args(["scan", fixture.to_str().unwrap()])
         .assert()
         .success()
         .stdout(predicate::str::contains("no findings"));
+}
+
+#[test]
+fn balance_drain_vulnerable_triggers_balance_rules() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/balance-drain-vulnerable");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let rules: Vec<&str> = arr.iter().map(|f| f["rule"].as_str().unwrap()).collect();
+    assert!(
+        rules.contains(&"missing_balance_check"),
+        "expected missing_balance_check, got: {rules:?}"
+    );
+    assert!(
+        rules.contains(&"lamports_drain"),
+        "expected lamports_drain, got: {rules:?}"
+    );
+}
+
+#[test]
+fn clean_vault_no_balance_findings() {
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-clean");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let balance_rules = arr
+        .iter()
+        .filter(|f| {
+            matches!(
+                f["rule"].as_str(),
+                Some("missing_balance_check" | "lamports_drain" | "unchecked_balance_flow" | "missing_bump_seed_canonicalization" | "duplicate_mutable_accounts")
+            )
+        })
+        .count();
+    assert_eq!(
+        balance_rules, 0,
+        "expected no balance/duplicate findings on clean vault, got {balance_rules}"
+    );
 }

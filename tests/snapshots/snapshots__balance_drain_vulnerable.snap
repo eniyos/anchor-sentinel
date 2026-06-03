@@ -1,0 +1,221 @@
+---
+source: tests/snapshots.rs
+assertion_line: 68
+expression: stripped
+---
+{
+  "findings": [
+    {
+      "account": null,
+      "column": null,
+      "file": null,
+      "hint": "Consider adding a rent-exempt check to prevent accidental account destruction: `require!(account.lamports() >= rent_exempt, ...)`. ",
+      "instruction": "safe_withdraw",
+      "line": null,
+      "message": "Instruction `safe_withdraw` debits from vault, destination and credits destination (+amount). No rent-exempt minimum guard detected.",
+      "program": "drain_vault",
+      "rule": "unchecked_balance_flow",
+      "severity": "info"
+    },
+    {
+      "account": null,
+      "column": null,
+      "file": null,
+      "hint": "Consider adding a rent-exempt check to prevent accidental account destruction: `require!(account.lamports() >= rent_exempt, ...)`. ",
+      "instruction": "unsafe_withdraw",
+      "line": null,
+      "message": "Instruction `unsafe_withdraw` debits from vault, destination and credits destination (+amount). No rent-exempt minimum guard detected.",
+      "program": "drain_vault",
+      "rule": "unchecked_balance_flow",
+      "severity": "info"
+    },
+    {
+      "account": "vault",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Either type the field as `Account<'info, T>` for compile-time ownership, or add `#[account(owner = <expected_program_id>)]`.",
+      "instruction": "safe_withdraw",
+      "line": 52,
+      "message": "Account `vault` on instruction `safe_withdraw` is mutable but typed as `AccountInfo` and lacks an `#[account(owner = …)]` constraint. Runtime code can deserialize arbitrary data into it.",
+      "program": "drain_vault",
+      "rule": "missing_ownership",
+      "severity": "high"
+    },
+    {
+      "account": "vault",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Either type the field as `Account<'info, T>` for compile-time ownership, or add `#[account(owner = <expected_program_id>)]`.",
+      "instruction": "unsafe_withdraw",
+      "line": 52,
+      "message": "Account `vault` on instruction `unsafe_withdraw` is mutable but typed as `AccountInfo` and lacks an `#[account(owner = …)]` constraint. Runtime code can deserialize arbitrary data into it.",
+      "program": "drain_vault",
+      "rule": "missing_ownership",
+      "severity": "high"
+    },
+    {
+      "account": "vault",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "safe_withdraw",
+      "line": 52,
+      "message": "Account `vault` on instruction `safe_withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "drain_vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "destination",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "safe_withdraw",
+      "line": 54,
+      "message": "Account `destination` on instruction `safe_withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "drain_vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "vault",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "unsafe_withdraw",
+      "line": 52,
+      "message": "Account `vault` on instruction `unsafe_withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "drain_vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "destination",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "unsafe_withdraw",
+      "line": 54,
+      "message": "Account `destination` on instruction `unsafe_withdraw` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "drain_vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "closer",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "close_account",
+      "line": 70,
+      "message": "Account `closer` on instruction `close_account` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "drain_vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "target_account",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "close_account",
+      "line": 72,
+      "message": "Account `target_account` on instruction `close_account` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "drain_vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "closer",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "drain_close",
+      "line": 70,
+      "message": "Account `closer` on instruction `drain_close` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "drain_vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "target_account",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the field as `Signer` instead of `AccountInfo`.",
+      "instruction": "drain_close",
+      "line": 72,
+      "message": "Account `target_account` on instruction `drain_close` is declared as `AccountInfo` in the handler but is not marked as a signer in the IDL. `AccountInfo` is the unsafe escape hatch — there is no runtime signer check.",
+      "program": "drain_vault",
+      "rule": "missing_signer",
+      "severity": "critical"
+    },
+    {
+      "account": "account",
+      "column": 45,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Add a signer/authority check before zeroing lamports: `require_keys_eq!(account.key(), expected_authority, ErrorCode::Unauthorized)`.",
+      "instruction": "close_account",
+      "line": 36,
+      "message": "Account `account` is zeroed in `close_account` without any authorization check. Any caller can destroy this account and its rent-exempt deposit.",
+      "program": "drain_vault",
+      "rule": "lamports_drain",
+      "severity": "high"
+    },
+    {
+      "account": "account",
+      "column": 16,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Add a signer/authority check before zeroing lamports: `require_keys_eq!(account.key(), expected_authority, ErrorCode::Unauthorized)`.",
+      "instruction": "drain_close",
+      "line": 43,
+      "message": "Account `account` is zeroed in `drain_close` without any authorization check. Any caller can destroy this account and its rent-exempt deposit.",
+      "program": "drain_vault",
+      "rule": "lamports_drain",
+      "severity": "high"
+    },
+    {
+      "account": "vault",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the fields as `Account<'info, T>` or use `#[account(mut)]` with `has_one` constraints to derive distinct addresses from seeds.",
+      "instruction": "safe_withdraw",
+      "line": 52,
+      "message": "Instruction `safe_withdraw` has ≥2 mutable `AccountInfo` accounts (vault, destination) — an attacker can pass the same pubkey for both. Debiting one also debits the other because they reference the same account.",
+      "program": "drain_vault",
+      "rule": "duplicate_mutable_accounts",
+      "severity": "high"
+    },
+    {
+      "account": "vault",
+      "column": 4,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Type the fields as `Account<'info, T>` or use `#[account(mut)]` with `has_one` constraints to derive distinct addresses from seeds.",
+      "instruction": "unsafe_withdraw",
+      "line": 52,
+      "message": "Instruction `unsafe_withdraw` has ≥2 mutable `AccountInfo` accounts (vault, destination) — an attacker can pass the same pubkey for both. Debiting one also debits the other because they reference the same account.",
+      "program": "drain_vault",
+      "rule": "duplicate_mutable_accounts",
+      "severity": "high"
+    },
+    {
+      "account": "vault",
+      "column": 43,
+      "file": "programs/drain-vault/src/lib.rs",
+      "hint": "Add a guard before the debit: `require!(vault.lamports() >= amount, ErrorCode::InsufficientFunds)` or use `checked_sub`.",
+      "instruction": "unsafe_withdraw",
+      "line": 27,
+      "message": "Account `vault` has lamports debited by `amount` in `unsafe_withdraw` without a preceding balance check. An attacker can drain the account by calling with `amount > account.lamports()`.",
+      "program": "drain_vault",
+      "rule": "missing_balance_check",
+      "severity": "critical"
+    }
+  ],
+  "summary": {
+    "critical": 9,
+    "high": 6,
+    "info": 2,
+    "low": 0,
+    "medium": 0,
+    "total": 17
+  }
+}

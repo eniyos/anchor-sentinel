@@ -15,7 +15,7 @@
 
 use anyhow::Result;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
 
 pub struct PdaMisconfig;
 
@@ -33,6 +33,7 @@ impl Rule for PdaMisconfig {
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         let mut out = Vec::new();
         let mut seen_fields = std::collections::HashSet::new();
+        let hint_index = field_hint_index(ctx);
 
         for hint in &ctx.ast_hints {
             if let AstHintKind::AccountsField {
@@ -47,20 +48,21 @@ impl Rule for PdaMisconfig {
                 // Rule 1: seeds present, no bump.
                 if joined.contains("seeds") && !joined.contains("bump") {
                     seen_fields.insert(field_name.clone());
-                    out.push(
-                        Finding::builder(
-                            self.id(),
-                            self.severity(),
-                            format!(
-                                "Account `{}` declares `seeds = [...]` but does not pin the bump. Bump canonicalization is left to runtime guesswork, which can be exploited by passing non-canonical bumps.",
-                                field_name
-                            ),
-                        )
-                        .program(&ctx.ir.name)
-                        .account(field_name)
-                        .hint("Add `bump` to the constraint (e.g. `bump` or `bump = ctx.bumps.<field>`).")
-                        .build(),
-                    );
+                    let mut b = Finding::builder(
+                        self.id(),
+                        self.severity(),
+                        format!(
+                            "Account `{}` declares `seeds = [...]` but does not pin the bump. Bump canonicalization is left to runtime guesswork, which can be exploited by passing non-canonical bumps.",
+                            field_name
+                        ),
+                    )
+                    .program(&ctx.ir.name)
+                    .account(field_name)
+                    .hint("Add `bump` to the constraint (e.g. `bump` or `bump = ctx.bumps.<field>`).");
+                    if let Some(h) = hint_index.get(field_name) {
+                        b = h.location().stamp(b);
+                    }
+                    out.push(b.build());
                     continue;
                 }
 
@@ -76,28 +78,33 @@ impl Rule for PdaMisconfig {
                     //   `bump = `        — implicit canonical bump
                     // Anything else is `bump = <expr>` where expr is the trap.
                     if let Some(eq_idx) = after.find('=') {
-                        let expr = after[eq_idx + 1..].trim_start().trim_end_matches(',').trim();
-                        if !expr.is_empty() && expr != "ctx.bumps" && !expr.starts_with("ctx.bumps") {
+                        let expr = after[eq_idx + 1..]
+                            .trim_start()
+                            .trim_end_matches(',')
+                            .trim();
+                        if !expr.is_empty() && expr != "ctx.bumps" && !expr.starts_with("ctx.bumps")
+                        {
                             // Look for the case where the RHS is a *plain
                             // identifier* matching a struct field. That's the
                             // user-supplied bump (`bump = bump` where `bump`
                             // is a function argument).
                             if is_plain_ident(expr) {
                                 seen_fields.insert(field_name.clone());
-                                out.push(
-                                    Finding::builder(
-                                        self.id(),
-                                        self.severity(),
-                                        format!(
-                                            "Account `{}` pins `bump = {}` — this binds the bump to a user-supplied value instead of the canonical bump. The classic Sealevel-Attacks bypass.",
-                                            field_name, expr
-                                        ),
-                                    )
-                                    .program(&ctx.ir.name)
-                                    .account(field_name)
-                                    .hint("Replace with the bare `bump` identifier or `bump = ctx.bumps.<field>` to use the canonical bump.")
-                                    .build(),
-                                );
+                                let mut b = Finding::builder(
+                                    self.id(),
+                                    self.severity(),
+                                    format!(
+                                        "Account `{}` pins `bump = {}` — this binds the bump to a user-supplied value instead of the canonical bump. The classic Sealevel-Attacks bypass.",
+                                        field_name, expr
+                                    ),
+                                )
+                                .program(&ctx.ir.name)
+                                .account(field_name)
+                                .hint("Replace with the bare `bump` identifier or `bump = ctx.bumps.<field>` to use the canonical bump.");
+                                if let Some(h) = hint_index.get(field_name) {
+                                    b = h.location().stamp(b);
+                                }
+                                out.push(b.build());
                             }
                         }
                     }
@@ -110,21 +117,22 @@ impl Rule for PdaMisconfig {
             for acct in &ix.accounts {
                 if let Some(pda) = &acct.pda {
                     if pda.seeds.is_empty() && !seen_fields.contains(&acct.name) {
-                        out.push(
-                            Finding::builder(
-                                self.id(),
-                                self.severity(),
-                                format!(
-                                    "Account `{}` on instruction `{}` is declared as a PDA but has no seeds in the IDL.",
-                                    acct.name, ix.name
-                                ),
-                            )
-                            .program(&ctx.ir.name)
-                            .instruction(&ix.name)
-                            .account(&acct.name)
-                            .hint("Provide explicit `seeds = [...]` in the constraint.")
-                            .build(),
-                        );
+                        let mut b = Finding::builder(
+                            self.id(),
+                            self.severity(),
+                            format!(
+                                "Account `{}` on instruction `{}` is declared as a PDA but has no seeds in the IDL.",
+                                acct.name, ix.name
+                            ),
+                        )
+                        .program(&ctx.ir.name)
+                        .instruction(&ix.name)
+                        .account(&acct.name)
+                        .hint("Provide explicit `seeds = [...]` in the constraint.");
+                        if let Some(h) = hint_index.get(&acct.name) {
+                            b = h.location().stamp(b);
+                        }
+                        out.push(b.build());
                     }
                 }
             }

@@ -17,6 +17,9 @@ pub enum IdlVersion {
 /// Top-level program representation handed to the rule engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramIr {
+    /// Which IDL dialect produced this IR. Recorded for diagnostics
+    /// (the engine already branches on field presence, not version).
+    #[allow(dead_code)]
     pub version: IdlVersion,
     pub name: String,
     pub instructions: Vec<Instruction>,

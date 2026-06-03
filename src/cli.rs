@@ -5,7 +5,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use crate::engine::Severity;
 
 #[derive(Parser, Debug)]
-#[command(name = "sentinel", version, about = "Static security analysis for Anchor programs")]
+#[command(
+    name = "sentinel",
+    version,
+    about = "Static security analysis for Anchor programs"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -18,12 +22,11 @@ pub enum Command {
         /// Path to the Anchor project (the directory containing `Anchor.toml`).
         path: String,
 
-        /// Emit JSON instead of human-readable output.
-        #[arg(long)]
-        json: bool,
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: OutputFormat,
 
-        /// Exit with a non-zero status if any finding at or above the min
-        /// severity is found. Useful in CI.
+        /// Treat any non-info finding as a build failure. Useful in CI.
         #[arg(long)]
         strict: bool,
 
@@ -41,6 +44,14 @@ pub enum Command {
 
     /// Print the sentinel version.
     Version,
+}
+
+#[derive(Copy, Clone, Debug, Default, ValueEnum)]
+pub enum OutputFormat {
+    #[default]
+    Text,
+    Json,
+    Sarif,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]

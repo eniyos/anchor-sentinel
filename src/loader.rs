@@ -8,6 +8,9 @@ use crate::idl::{self, ir::ProgramIr};
 
 /// What the loader found in a project directory.
 pub struct LoadedProject {
+    /// Project root. Kept for future diagnostics (relative error
+    /// messages, `--include` patterns). Currently unused after `load()`.
+    #[allow(dead_code)]
     pub root: PathBuf,
     pub idl_files: Vec<PathBuf>,
     pub programs: Vec<PathBuf>,

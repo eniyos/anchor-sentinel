@@ -13,7 +13,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Rule, Severity};
+use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Rule, Severity};
 
 pub struct MissingOwnership;
 
@@ -31,6 +31,7 @@ impl Rule for MissingOwnership {
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         // Field types that already imply an ownership check at runtime.
         let mut ast_properly_typed: HashSet<String> = HashSet::new();
+        let hint_index = field_hint_index(ctx);
         for hint in &ctx.ast_hints {
             if let AstHintKind::AccountsField { field_name, ty, .. } = &hint.kind {
                 if ty.contains("Account<")
@@ -53,27 +54,25 @@ impl Rule for MissingOwnership {
                     continue;
                 }
                 let lname = acct.name.to_ascii_lowercase();
-                if !(lname.contains("vault")
-                    || lname.contains("pool")
-                    || lname.contains("state"))
-                {
+                if !(lname.contains("vault") || lname.contains("pool") || lname.contains("state")) {
                     continue;
                 }
-                out.push(
-                    Finding::builder(
-                        self.id(),
-                        self.severity(),
-                        format!(
-                            "Account `{}` on instruction `{}` is mutable but typed as `AccountInfo` and lacks an `#[account(owner = …)]` constraint. Runtime code can deserialize arbitrary data into it.",
-                            acct.name, ix.name
-                        ),
-                    )
-                    .program(&ctx.ir.name)
-                    .instruction(&ix.name)
-                    .account(&acct.name)
-                    .hint("Either type the field as `Account<'info, T>` for compile-time ownership, or add `#[account(owner = <expected_program_id>)]`.")
-                    .build(),
-                );
+                let mut b = Finding::builder(
+                    self.id(),
+                    self.severity(),
+                    format!(
+                        "Account `{}` on instruction `{}` is mutable but typed as `AccountInfo` and lacks an `#[account(owner = …)]` constraint. Runtime code can deserialize arbitrary data into it.",
+                        acct.name, ix.name
+                    ),
+                )
+                .program(&ctx.ir.name)
+                .instruction(&ix.name)
+                .account(&acct.name)
+                .hint("Either type the field as `Account<'info, T>` for compile-time ownership, or add `#[account(owner = <expected_program_id>)]`.");
+                if let Some(h) = hint_index.get(&acct.name) {
+                    b = h.location().stamp(b);
+                }
+                out.push(b.build());
             }
         }
         Ok(out)

@@ -2,10 +2,15 @@
 //! them, and emits:
 //!   - `AstHintKind::InstructionHandler` (struct + fn name)
 //!   - `AstHintKind::UnsafeArithmetic` for raw `+ - * / %` on integer types
+//!   - `AstHintKind::LamportsDebit` / `LamportsCredit` for lamports +=/ -=
+//!   - `AstHintKind::BalanceCheck` for `>=`, `require!`, etc. guards
+//!   - `AstHintKind::LamportsZero` for `lamports = 0` / `set_lamports(0)`
+//!   - `AstHintKind::CpiTransfer` for `invoke` / `invoke_signed`
 //!
 //! CPI detection (calls to `invoke` / `invoke_signed`) is also captured but
 //! not emitted as a hint yet — Week 3 will add a `cpi_safety` rule.
 
+use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{BinOp, Expr, ExprBinary, ImplItem, ImplItemFn, Item, Type};
@@ -25,6 +30,9 @@ pub struct FileFns {
 }
 
 pub struct InstructionFnVisitor<'a> {
+    /// File path the visitor is attached to. Carried for future
+    /// diagnostics — current visitor body doesn't read it.
+    #[allow(dead_code)]
     pub file: &'a str,
     pub out: &'a mut FileFns,
 }
@@ -67,12 +75,7 @@ impl<'ast, 'a> Visit<'ast> for InstructionFnVisitor<'a> {
 }
 
 fn has_program_attr(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|a| {
-        if !a.path().is_ident("program") {
-            return false;
-        }
-        true
-    })
+    attrs.iter().any(|a| a.path().is_ident("program"))
 }
 
 fn last_path_segment(path: &syn::Path) -> String {
@@ -93,8 +96,8 @@ fn visit_handler_fn(f: &syn::ItemFn, mod_name: &str, hints: &mut Vec<RawHint>) {
         start,
     });
 
-    let mut arith = ArithmeticVisitor { hints };
-    arith.visit_block(&f.block);
+    let mut visitor = BalanceVisitor::new(hints);
+    visitor.visit_block(&f.block);
 }
 
 fn visit_handler_fn_impl(f: &ImplItemFn, struct_name: &str, hints: &mut Vec<RawHint>) {
@@ -108,17 +111,52 @@ fn visit_handler_fn_impl(f: &ImplItemFn, struct_name: &str, hints: &mut Vec<RawH
         start,
     });
 
-    let mut arith = ArithmeticVisitor { hints };
-    arith.visit_block(&f.block);
+    let mut visitor = BalanceVisitor::new(hints);
+    visitor.visit_block(&f.block);
 }
 
-/// Inner visitor: scans every expression for `+ - * / %` on integer types.
-struct ArithmeticVisitor<'a> {
+/// Inner visitor: scans expressions in `#[program]` function bodies for:
+/// - unchecked arithmetic (existing)
+/// - lamports debit/credit via compound assignment
+/// - lamports comparison guards
+/// - lamports zeroed assignments
+/// - `set_lamports(0)` method calls
+/// - `require!` / `require_gte!` macro invocations
+/// - `invoke` / `invoke_signed` CPI calls
+struct BalanceVisitor<'a> {
     hints: &'a mut Vec<RawHint>,
+    seq_counter: usize,
 }
 
-impl<'ast, 'a> Visit<'ast> for ArithmeticVisitor<'a> {
+impl<'a> BalanceVisitor<'a> {
+    fn new(hints: &'a mut Vec<RawHint>) -> Self {
+        Self {
+            hints,
+            seq_counter: 0,
+        }
+    }
+
+    fn next_seq(&mut self) -> usize {
+        let s = self.seq_counter;
+        self.seq_counter += 1;
+        s
+    }
+}
+
+impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
+    fn visit_stmt(&mut self, s: &'ast syn::Stmt) {
+        if let syn::Stmt::Macro(sm) = s {
+            visit_stmt_macro(self, sm);
+        }
+        visit::visit_stmt(self, s);
+    }
+
+    fn visit_expr(&mut self, e: &'ast Expr) {
+        visit::visit_expr(self, e);
+    }
+
     fn visit_expr_binary(&mut self, e: &'ast ExprBinary) {
+        // Existing: unchecked arithmetic on integer types.
         if let Some(op) = match e.op {
             BinOp::Add(_) => Some("+"),
             BinOp::Sub(_) => Some("-"),
@@ -132,23 +170,399 @@ impl<'ast, 'a> Visit<'ast> for ArithmeticVisitor<'a> {
             let lhs_int = is_int_type(&lhs_ty) || looks_like_int(&lhs_ty);
             let rhs_int = is_int_type(&rhs_ty) || looks_like_int(&rhs_ty);
             let both_clear = lhs_int && rhs_int;
-            let one_clear = (lhs_int && !is_string_like(&rhs_ty))
-                || (rhs_int && !is_string_like(&lhs_ty));
+            let one_clear =
+                (lhs_int && !is_string_like(&rhs_ty)) || (rhs_int && !is_string_like(&lhs_ty));
             if both_clear || one_clear {
                 let start = e.op.span().start();
                 self.hints.push(RawHint {
                     kind: AstHintKind::UnsafeArithmetic {
                         op: op.to_string(),
-                        lhs_ty: if lhs_ty.is_empty() { "unknown".into() } else { lhs_ty },
-                        rhs_ty: if rhs_ty.is_empty() { "unknown".into() } else { rhs_ty },
+                        lhs_ty: if lhs_ty.is_empty() {
+                            "unknown".into()
+                        } else {
+                            lhs_ty
+                        },
+                        rhs_ty: if rhs_ty.is_empty() {
+                            "unknown".into()
+                        } else {
+                            rhs_ty
+                        },
                     },
                     start,
                 });
             }
         }
+
+        // NEW: Compound assignment `+=` / `-=` on lamports accessors.
+        match e.op {
+            BinOp::SubAssign(_) => {
+                if let Some((account, amount)) = extract_lamports_compound(&e.left, &e.right) {
+                    let seq = self.next_seq();
+                    self.hints.push(RawHint {
+                        kind: AstHintKind::LamportsDebit {
+                            account,
+                            amount_expr: amount,
+                            seq,
+                        },
+                        start: e.op.span().start(),
+                    });
+                }
+            }
+            BinOp::AddAssign(_) => {
+                if let Some((account, amount)) = extract_lamports_compound(&e.left, &e.right) {
+                    let seq = self.next_seq();
+                    self.hints.push(RawHint {
+                        kind: AstHintKind::LamportsCredit {
+                            account,
+                            amount_expr: amount,
+                            seq,
+                        },
+                        start: e.op.span().start(),
+                    });
+                }
+            }
+            _ => {}
+        }
+
+        // NEW: Comparison operators as balance guards when they involve lamports.
+        match e.op {
+            BinOp::Ge(_) | BinOp::Le(_) | BinOp::Gt(_) | BinOp::Lt(_) => {
+                if let Some((account, check_type)) = extract_lamports_comparison(&e) {
+                    let seq = self.next_seq();
+                    self.hints.push(RawHint {
+                        kind: AstHintKind::BalanceCheck {
+                            account,
+                            check_type,
+                            seq,
+                        },
+                        start: e.op.span().start(),
+                    });
+                }
+            }
+            _ => {}
+        }
+
         visit::visit_expr_binary(self, e);
     }
+
+    fn visit_expr_assign(&mut self, e: &'ast syn::ExprAssign) {
+        if let Some(account) = extract_lamports_zero_assign(&e.left, &e.right) {
+            let seq = self.next_seq();
+            let start = e.eq_token.span.start();
+            self.hints.push(RawHint {
+                kind: AstHintKind::LamportsZero { account, seq },
+                start,
+            });
+        }
+        visit::visit_expr_assign(self, e);
+    }
+
+    fn visit_expr_method_call(&mut self, e: &'ast syn::ExprMethodCall) {
+        let method = e.method.to_string();
+        // `set_lamports(0)` — explicit lamports zeroing.
+        if method == "set_lamports" {
+            if let Some(first_arg) = e.args.first() {
+                if is_zero_literal(first_arg) {
+                    let account = extract_account_name(&e.receiver);
+                    if !account.is_empty() {
+                        let seq = self.next_seq();
+                        let start = e.method.span().start();
+                        self.hints.push(RawHint {
+                            kind: AstHintKind::LamportsZero { account, seq },
+                            start,
+                        });
+                    }
+                }
+            }
+        }
+        visit::visit_expr_method_call(self, e);
+    }
+
+    fn visit_expr_macro(&mut self, e: &'ast syn::ExprMacro) {
+        let mac_path = e.mac.path.to_token_stream().to_string().replace(' ', "");
+        // `require!`, `require_gte!`, `require_eq!` as balance/authorization checks.
+        if mac_path == "require"
+            || mac_path == "require_gte"
+            || mac_path == "require_eq"
+            || mac_path == "require_gt"
+            || mac_path == "require_keys_eq"
+            || mac_path == "require_keys_neq"
+        {
+            if let Some(account) = extract_account_from_require_macro(&e.mac.tokens) {
+                let check_type = mac_path.clone();
+                let seq = self.next_seq();
+                let start = e.mac.path.span().start();
+                self.hints.push(RawHint {
+                    kind: AstHintKind::BalanceCheck {
+                        account,
+                        check_type,
+                        seq,
+                    },
+                    start,
+                });
+            }
+        }
+        // `invoke` / `invoke_signed` CPI detection.
+        if mac_path.ends_with("invoke")
+            || mac_path.ends_with("invoke_signed")
+            || mac_path.ends_with("invoke::invoke")
+            || mac_path.ends_with("invoke_signed::invoke_signed")
+            || mac_path.ends_with("solana_program::invoke")
+        {
+            let target = extract_cpi_target(&e.mac.tokens);
+            let seq = self.next_seq();
+            let start = e.mac.path.span().start();
+            self.hints.push(RawHint {
+                kind: AstHintKind::CpiTransfer { target, seq },
+                start,
+            });
+        }
+        visit::visit_expr_macro(self, e);
+    }
 }
+
+/// Handle macro statements (syn 2.0 parses `require!(...)` as `Stmt::Macro`,
+/// not `Stmt::Expr(Expr::Macro)`).
+fn visit_stmt_macro<'ast>(visitor: &mut BalanceVisitor, sm: &'ast syn::StmtMacro) {
+    let mac_path = sm.mac.path.to_token_stream().to_string().replace(' ', "");
+    // `require!`, `require_gte!`, `require_eq!` as balance/authorization checks.
+    if mac_path == "require"
+        || mac_path == "require_gte"
+        || mac_path == "require_eq"
+        || mac_path == "require_gt"
+        || mac_path == "require_keys_eq"
+        || mac_path == "require_keys_neq"
+    {
+        if let Some(account) = extract_account_from_require_macro(&sm.mac.tokens) {
+            let check_type = mac_path.clone();
+            let seq = visitor.next_seq();
+            let start = sm.mac.path.span().start();
+            visitor.hints.push(RawHint {
+                kind: AstHintKind::BalanceCheck {
+                    account,
+                    check_type,
+                    seq,
+                },
+                start,
+            });
+        }
+    }
+    // `invoke` / `invoke_signed` CPI detection.
+    if mac_path.ends_with("invoke")
+        || mac_path.ends_with("invoke_signed")
+        || mac_path.ends_with("invoke::invoke")
+        || mac_path.ends_with("invoke_signed::invoke_signed")
+        || mac_path.ends_with("solana_program::invoke")
+    {
+        let target = extract_cpi_target(&sm.mac.tokens);
+        let seq = visitor.next_seq();
+        let start = sm.mac.path.span().start();
+        visitor.hints.push(RawHint {
+            kind: AstHintKind::CpiTransfer { target, seq },
+            start,
+        });
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+/// Detect `account.lamports() -= amount` or `**account.try_borrow_mut_lamports()? -= amount`.
+fn extract_lamports_compound(left: &Expr, right: &Expr) -> Option<(String, String)> {
+    if is_lamports_dereference_mut(left) || is_lamports_method_call(left) {
+        let account = extract_account_name(left);
+        if !account.is_empty() {
+            return Some((account, expr_to_string(right)));
+        }
+    }
+    None
+}
+
+/// Detect comparison involving lamports accessors.
+fn extract_lamports_comparison(e: &ExprBinary) -> Option<(String, String)> {
+    let op_str = match e.op {
+        BinOp::Ge(_) => "gte",
+        BinOp::Le(_) => "lte",
+        BinOp::Gt(_) => "gt",
+        BinOp::Lt(_) => "lt",
+        _ => return None,
+    };
+    if is_lamports_expression(&e.left) {
+        return Some((extract_account_name(&e.left), op_str.to_string()));
+    }
+    if is_lamports_expression(&e.right) {
+        return Some((extract_account_name(&e.right), op_str.to_string()));
+    }
+    None
+}
+
+/// Detect `**account.lamports()? = 0` or `account.set_lamports(0)` via `=`.
+fn extract_lamports_zero_assign(left: &Expr, right: &Expr) -> Option<String> {
+    if !is_zero_literal(right) {
+        return None;
+    }
+    if is_lamports_dereference_mut(left) || is_lamports_method_call(left) {
+        let account = extract_account_name(left);
+        if !account.is_empty() {
+            return Some(account);
+        }
+    }
+    None
+}
+
+/// Is the expression a literal `0` (with or without type suffix)?
+fn is_zero_literal(e: &Expr) -> bool {
+    if let Expr::Lit(l) = e {
+        if let syn::Lit::Int(li) = &l.lit {
+            return li.base10_digits() == "0";
+        }
+    }
+    false
+}
+
+/// Is this expression a lamports accessor: `try_borrow_mut_lamports()`,
+/// `lamports()`, `set_lamports(_)`, or a variable named `lamports`/`balance`?
+fn is_lamports_expression(e: &Expr) -> bool {
+    is_lamports_dereference_mut(e) || is_lamports_method_call(e) || is_lamports_var(e)
+}
+
+/// Does the expression chain through `try_borrow_mut_lamports()` or `lamports()`?
+fn is_lamports_dereference_mut(e: &Expr) -> bool {
+    match e {
+        Expr::Unary(u) => is_lamports_dereference_mut(&u.expr),
+        Expr::Try(t) => is_lamports_dereference_mut(&t.expr),
+        Expr::Paren(p) => is_lamports_dereference_mut(&p.expr),
+        Expr::MethodCall(m) => {
+            let method = m.method.to_string();
+            method == "try_borrow_mut_lamports" || method == "lamports" || is_lamports_dereference_mut(&m.receiver)
+        }
+        _ => false,
+    }
+}
+
+/// Is this a direct `.lamports()` or `.set_lamports(_)` call (not behind deref)?
+fn is_lamports_method_call(e: &Expr) -> bool {
+    match e {
+        Expr::MethodCall(m) => {
+            let method = m.method.to_string();
+            matches!(method.as_str(), "lamports" | "set_lamports")
+        }
+        Expr::Unary(u) => is_lamports_method_call(&u.expr),
+        Expr::Paren(p) => is_lamports_method_call(&p.expr),
+        _ => false,
+    }
+}
+
+/// Does the expression reference a variable named `lamports` or `balance`?
+fn is_lamports_var(e: &Expr) -> bool {
+    if let Expr::Path(p) = e {
+        if let Some(seg) = p.path.segments.last() {
+            let name = seg.ident.to_string();
+            return name == "lamports" || name == "balance";
+        }
+    }
+    false
+}
+
+/// Walk through wrappers to extract the base account name from a lamports expression.
+/// Handles: `**vault.try_borrow_mut_lamports()?`, `ctx.accounts.vault`, `vault.lamports()`, etc.
+fn extract_account_name(e: &Expr) -> String {
+    match e {
+        Expr::Unary(u) => extract_account_name(&u.expr),
+        Expr::Try(t) => extract_account_name(&t.expr),
+        Expr::Paren(p) => extract_account_name(&p.expr),
+        Expr::MethodCall(m) => extract_account_name(&m.receiver),
+        Expr::Field(f) => {
+            let name = match &f.member {
+                syn::Member::Named(i) => i.to_string(),
+                syn::Member::Unnamed(_) => String::new(),
+            };
+            // Walk through `ctx.accounts.vault` → extract `vault`.
+            if name == "accounts" || name == "ctx" {
+                extract_account_name(&f.base)
+            } else {
+                name
+            }
+        }
+        Expr::Path(p) => last_path_segment(&p.path),
+        _ => String::new(),
+    }
+}
+
+/// Heuristically extract account name from `require!` macro arguments.
+fn extract_account_from_require_macro(tokens: &proc_macro2::TokenStream) -> Option<String> {
+    // The tokens are the content between the delimiters.
+    // We look for patterns like `account.lamports()`, `account.lamports`, or
+    // `account.key()` / `keys_eq(account.key(), ...)`.
+    let s = tokens.to_string();
+    find_first_account_in_tokens(&s)
+}
+
+/// Find the first account-like identifier in a token string.
+fn find_first_account_in_tokens(s: &str) -> Option<String> {
+    // Look for patterns: `ctx.accounts.X`, `X.lamports`, `X.key()`, `X.balance`
+    let cleaned = s.replace(char::is_whitespace, "");
+    // Try `ctx.accounts.X` first.
+    if let Some(idx) = cleaned.find("ctx.accounts.") {
+        let after = &cleaned[idx + "ctx.accounts.".len()..];
+        if let Some(end) = after.find(|c: char| !c.is_alphanumeric() && c != '_') {
+            let name = &after[..end];
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    // Try `X.lamports()` or `X.lamports`.
+    if let Some(idx) = cleaned.find(".lamports") {
+        // Walk backwards to find the identifier before the dot.
+        let before = &cleaned[..idx];
+        if let Some(dot) = before.rfind('.') {
+            let name = &before[dot + 1..];
+            if !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Some(name.to_string());
+            }
+        }
+    }
+    // Try `keys_eq(X.key(),` or `require_keys_eq(X.key(),`.
+    for marker in &["keys_eq(", "keys_neq("] {
+        if let Some(idx) = cleaned.find(marker) {
+            let after = &cleaned[idx + marker.len()..];
+            if let Some(comma) = after.find(|c: char| c == ',' || c == ')') {
+                let name = &after[..comma];
+                if !name.is_empty() {
+                    return Some(name.to_string());
+                }
+            }
+        }
+    }
+    // Fallback: first identifier token.
+    for token in cleaned.split(|c: char| !c.is_alphanumeric() && c != '_') {
+        if !token.is_empty()
+            && token.chars().next().unwrap_or(' ').is_alphabetic()
+            && token != "require"
+            && token != "require_gte"
+            && token != "require_eq"
+            && token != "Error"
+            && token != "error"
+        {
+            return Some(token.to_string());
+        }
+    }
+    None
+}
+
+/// Extract CPI target from `invoke` / `invoke_signed` macro tokens.
+fn extract_cpi_target(_tokens: &proc_macro2::TokenStream) -> String {
+    // Heuristic: the first account-like argument in the invoke call.
+    // This is intentionally rough — the rule using this hint is heuristic anyway.
+    "invoke".to_string()
+}
+
+/// Convert an expression to a short string representation for the amount hint.
+fn expr_to_string(e: &Expr) -> String {
+    e.to_token_stream().to_string().replace(char::is_whitespace, "")
+}
+
+// ── Existing arithmetic type helpers ─────────────────────────────────────
 
 fn expr_type_name(e: &Expr) -> String {
     // We don't have a real type resolver. For literals we know the suffix;
@@ -170,8 +584,17 @@ fn expr_type_name(e: &Expr) -> String {
 fn is_int_type(s: &str) -> bool {
     matches!(
         s,
-        "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
-            | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+        "u8" | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "usize"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "isize"
             | "int_literal" // numeric literal — assume integer
     )
 }
@@ -187,16 +610,7 @@ fn looks_like_int(s: &str) -> bool {
     let lname = s.to_ascii_lowercase();
     matches!(
         lname.as_str(),
-        "amount"
-            | "value"
-            | "total"
-            | "lamports"
-            | "balance"
-            | "delta"
-            | "n"
-            | "i"
-            | "x"
-            | "y"
+        "amount" | "value" | "total" | "lamports" | "balance" | "delta" | "n" | "i" | "x" | "y"
     ) || lname.ends_with("_amount")
         || lname.ends_with("_total")
         || lname.ends_with("_value")

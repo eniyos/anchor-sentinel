@@ -6,24 +6,24 @@ expression: stripped
 {
   "findings": [
     {
-      "account": null,
-      "column": null,
+      "account": "vault",
+      "column": 4,
       "file": "programs/pda-insecure/src/lib.rs",
-      "hint": "Replace `a - b` with `a.checked_-(b).unwrap()` or use a checked-math helper.",
+      "hint": "Use the bare `bump` identifier (which derives the canonical bump from seeds), or `bump = ctx.bumps.{field_name}` to use the framework-managed canonical bump.",
       "instruction": null,
-      "line": null,
-      "message": "Unchecked `-` between `vault` and `amount` — wrap in `checked_-`, `saturating_-`, or `overflowing_-` to avoid panics on overflow.",
+      "line": 41,
+      "message": "Account `vault` pins `bump = bump` — this binds the PDA derivation to a non-canonical value. An attacker can pass a different bump and access a separate PDA account.",
       "program": "pda_insecure",
-      "rule": "unsafe_arithmetic",
-      "severity": "medium"
+      "rule": "missing_bump_seed_canonicalization",
+      "severity": "high"
     },
     {
       "account": "vault",
-      "column": null,
-      "file": null,
+      "column": 4,
+      "file": "programs/pda-insecure/src/lib.rs",
       "hint": "Replace with the bare `bump` identifier or `bump = ctx.bumps.<field>` to use the canonical bump.",
       "instruction": null,
-      "line": null,
+      "line": 41,
       "message": "Account `vault` pins `bump = bump` — this binds the bump to a user-supplied value instead of the canonical bump. The classic Sealevel-Attacks bypass.",
       "program": "pda_insecure",
       "rule": "pda_misconfig",
@@ -31,23 +31,35 @@ expression: stripped
     },
     {
       "account": "vault",
-      "column": null,
-      "file": null,
+      "column": 4,
+      "file": "programs/pda-insecure/src/lib.rs",
       "hint": "Add `bump` to the constraint (e.g. `bump` or `bump = ctx.bumps.<field>`).",
       "instruction": null,
-      "line": null,
+      "line": 41,
       "message": "Account `vault` declares `seeds = [...]` but does not pin the bump. Bump canonicalization is left to runtime guesswork, which can be exploited by passing non-canonical bumps.",
       "program": "pda_insecure",
       "rule": "pda_misconfig",
       "severity": "high"
+    },
+    {
+      "account": null,
+      "column": 38,
+      "file": "programs/pda-insecure/src/lib.rs",
+      "hint": "Replace `a - b` with `a.checked_-(b).unwrap()` or use a checked-math helper.",
+      "instruction": null,
+      "line": 30,
+      "message": "Unchecked `-` between `vault` and `amount` — wrap in `checked_-`, `saturating_-`, or `overflowing_-` to avoid panics on overflow.",
+      "program": "pda_insecure",
+      "rule": "unsafe_arithmetic",
+      "severity": "medium"
     }
   ],
   "summary": {
     "critical": 0,
-    "high": 2,
+    "high": 3,
     "info": 0,
     "low": 0,
     "medium": 1,
-    "total": 3
+    "total": 4
   }
 }

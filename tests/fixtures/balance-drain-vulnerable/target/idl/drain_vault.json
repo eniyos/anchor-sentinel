@@ -1,0 +1,56 @@
+{
+  "version": "0.30.0",
+  "name": "drain_vault",
+  "instructions": [
+    {
+      "name": "safe_withdraw",
+      "accounts": [
+        { "name": "authority",   "writable": false, "signer": true },
+        { "name": "vault",       "writable": true,  "signer": false },
+        { "name": "destination", "writable": true,  "signer": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ],
+      "discriminator": [1, 2, 3, 4, 5, 6, 7, 8]
+    },
+    {
+      "name": "unsafe_withdraw",
+      "accounts": [
+        { "name": "authority",   "writable": false, "signer": false },
+        { "name": "vault",       "writable": true,  "signer": false },
+        { "name": "destination", "writable": true,  "signer": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ],
+      "discriminator": [9, 10, 11, 12, 13, 14, 15, 16]
+    },
+    {
+      "name": "close_account",
+      "accounts": [
+        { "name": "closer",         "writable": false, "signer": false },
+        { "name": "target_account", "writable": true,  "signer": false }
+      ],
+      "args": [],
+      "discriminator": [17, 18, 19, 20, 21, 22, 23, 24]
+    },
+    {
+      "name": "drain_close",
+      "accounts": [
+        { "name": "closer",         "writable": false, "signer": false },
+        { "name": "target_account", "writable": true,  "signer": false }
+      ],
+      "args": [],
+      "discriminator": [25, 26, 27, 28, 29, 30, 31, 32]
+    }
+  ],
+  "accounts": [
+    { "name": "VaultState", "discriminator": [100, 101, 102, 103, 104, 105, 106, 107] }
+  ],
+  "types": [],
+  "events": [],
+  "errors": [
+    { "code": 6000, "name": "InsufficientFunds", "msg": "insufficient funds" }
+  ]
+}

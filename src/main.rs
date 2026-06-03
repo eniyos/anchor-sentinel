@@ -32,11 +32,11 @@ fn run(cli: Cli) -> Result<ExitCode> {
     match cli.command {
         Command::Scan {
             path,
-            json,
+            format,
             strict,
             ignore,
             min_severity,
-        } => cmd_scan(&path, json, strict, &ignore, min_severity),
+        } => cmd_scan(&path, format, strict, &ignore, min_severity),
         Command::Rules => {
             cmd_rules();
             Ok(ExitCode::SUCCESS)
@@ -52,7 +52,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
 
 fn cmd_scan(
     path: &str,
-    json: bool,
+    format: cli::OutputFormat,
     strict: bool,
     ignore: &[String],
     min_severity: Option<cli::MinSeverity>,
@@ -93,10 +93,16 @@ fn cmd_scan(
         all_findings.retain(|f| f.severity >= min);
     }
 
-    if json {
-        println!("{}", report::json::render(&all_findings));
-    } else {
-        println!("{}", report::text::format_findings(&all_findings));
+    match format {
+        cli::OutputFormat::Sarif => {
+            println!("{}", report::sarif::render(&all_findings));
+        }
+        cli::OutputFormat::Json => {
+            println!("{}", report::json::render(&all_findings));
+        }
+        cli::OutputFormat::Text => {
+            println!("{}", report::text::format_findings(&all_findings));
+        }
     }
 
     // Decide exit code.

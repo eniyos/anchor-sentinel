@@ -45,7 +45,13 @@ jobs:
 
       - name: Deploy playground/ to the gh-pages branch
         uses: peaceiris/actions-gh-pages@v3
+        # peaceiris picks up `GITHUB_TOKEN` automatically when the
+        # workflow has `contents: write` (which we set above), but the
+        # action's auth check still wants to see an explicit token in
+        # some runners. Setting `github_token: ${{ secrets.GITHUB_TOKEN }}`
+        # makes the lookup unambiguous.
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           # The directory that becomes the published site root.
           # We deploy `playground/` itself so `playground/index.html` is
           # the site's index page. The `pkg/` subdirectory is included

@@ -5,30 +5,23 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Allow only one concurrent deployment, queueing newer runs and
-# dropping older ones. Concurrency settings also affect canceled
-# workflows — `cancel-in-progress: false` keeps a running deploy alive.
+# Allow only one concurrent deployment; queueing newer runs and
+# dropping older ones keeps the gh-pages branch consistent.
 concurrency:
   group: pages
   cancel-in-progress: false
 
-# Pages deployments need read on the repo (for checkout + GH Pages
-# branch creation) and write on the GH Pages environment (for the
-# peaceiris action). The default `GITHUB_TOKEN` has both when the
-# repo's Pages settings allow Actions deployments.
+# The peaceiris action pushes directly to the `gh-pages` branch, so
+# we need write access to the repo. `contents: write` is enough —
+# we don't need the `pages:` permission that the official
+# actions/deploy-pages action requires.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 jobs:
   build-and-deploy:
     name: build-wasm + deploy
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -50,14 +43,19 @@ jobs:
       - name: Build WASM module into playground/pkg/
         run: wasm-pack build --target web --out-dir playground/pkg
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy playground/ to the gh-pages branch
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: playground
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          # The directory that becomes the published site root.
+          # We deploy `playground/` itself so `playground/index.html` is
+          # the site's index page. The `pkg/` subdirectory is included
+          # in the same publish, so the WASM module is reachable at
+          # `/pkg/anchor_sentinel.js` from the page.
+          publish_dir: ./playground
+          # Don't keep history; this branch is rebuilt from scratch
+          # on every push to main.
+          force_orphan: true
+          # Keep the existing branch clean while we push.
+          commit_message: "deploy: anchor-sentinel playground (commit ${{ github.sha }})"
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com

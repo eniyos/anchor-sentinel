@@ -16,6 +16,9 @@ use std::collections::HashMap;
 
 use crate::engine::{AnalysisContext, AstHint, AstHintKind, Finding, Rule, Severity};
 
+/// `(file, fn_name)` key for grouping hints per handler function.
+type FnKey = (String, String);
+
 pub struct MissingBalanceCheck;
 
 impl Rule for MissingBalanceCheck {
@@ -31,11 +34,12 @@ impl Rule for MissingBalanceCheck {
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         // Collect debits and checks grouped by (file, fn_name).
-        let mut debits: HashMap<(String, String), Vec<(String, String, usize, &AstHint)>> =
-            HashMap::new();
-        let mut checks: HashMap<(String, String), Vec<(String, usize)>> = HashMap::new();
+        // `(account, amount_expr, seq, hint_ref)` — a lamports-debit operation.
+        type DebitEntry<'a> = (String, String, usize, &'a AstHint);
+        let mut debits: HashMap<FnKey, Vec<DebitEntry<'_>>> = HashMap::new();
+        let mut checks: HashMap<FnKey, Vec<(String, usize)>> = HashMap::new();
 
-        let mut current_fn: Option<(String, String)> = None; // (file, fn_name)
+        let mut current_fn: Option<FnKey> = None; // (file, fn_name)
         for hint in &ctx.ast_hints {
             if let AstHintKind::InstructionHandler { fn_name, .. } = &hint.kind {
                 current_fn = Some((hint.file.clone(), fn_name.clone()));

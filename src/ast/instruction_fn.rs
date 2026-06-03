@@ -227,7 +227,7 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
         // NEW: Comparison operators as balance guards when they involve lamports.
         match e.op {
             BinOp::Ge(_) | BinOp::Le(_) | BinOp::Gt(_) | BinOp::Lt(_) => {
-                if let Some((account, check_type)) = extract_lamports_comparison(&e) {
+                if let Some((account, check_type)) = extract_lamports_comparison(e) {
                     let seq = self.next_seq();
                     self.hints.push(RawHint {
                         kind: AstHintKind::BalanceCheck {
@@ -323,7 +323,7 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
 
 /// Handle macro statements (syn 2.0 parses `require!(...)` as `Stmt::Macro`,
 /// not `Stmt::Expr(Expr::Macro)`).
-fn visit_stmt_macro<'ast>(visitor: &mut BalanceVisitor, sm: &'ast syn::StmtMacro) {
+fn visit_stmt_macro(visitor: &mut BalanceVisitor, sm: &syn::StmtMacro) {
     let mac_path = sm.mac.path.to_token_stream().to_string().replace(' ', "");
     // `require!`, `require_gte!`, `require_eq!` as balance/authorization checks.
     if mac_path == "require"
@@ -528,7 +528,7 @@ fn find_first_account_in_tokens(s: &str) -> Option<String> {
     for marker in &["keys_eq(", "keys_neq("] {
         if let Some(idx) = cleaned.find(marker) {
             let after = &cleaned[idx + marker.len()..];
-            if let Some(comma) = after.find(|c: char| c == ',' || c == ')') {
+            if let Some(comma) = after.find([',', ')']) {
                 let name = &after[..comma];
                 if !name.is_empty() {
                     return Some(name.to_string());

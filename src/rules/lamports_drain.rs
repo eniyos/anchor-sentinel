@@ -15,6 +15,9 @@ use std::collections::HashMap;
 
 use crate::engine::{AnalysisContext, AstHint, AstHintKind, Finding, Rule, Severity};
 
+/// `(file, fn_name)` key for grouping hints per handler function.
+type FnKey = (String, String);
+
 pub struct LamportsDrain;
 
 impl Rule for LamportsDrain {
@@ -30,10 +33,12 @@ impl Rule for LamportsDrain {
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         // Collect zeros and auth checks grouped by (file, fn_name).
-        let mut zeros: HashMap<(String, String), Vec<(String, usize, &AstHint)>> = HashMap::new();
-        let mut auth_checks: HashMap<(String, String), Vec<usize>> = HashMap::new();
+        // `(account, seq, hint_ref)` — a lamports-zero operation.
+        type ZeroEntry<'a> = (String, usize, &'a AstHint);
+        let mut zeros: HashMap<FnKey, Vec<ZeroEntry<'_>>> = HashMap::new();
+        let mut auth_checks: HashMap<FnKey, Vec<usize>> = HashMap::new();
 
-        let mut current_fn: Option<(String, String)> = None;
+        let mut current_fn: Option<FnKey> = None;
         for hint in &ctx.ast_hints {
             if let AstHintKind::InstructionHandler { fn_name, .. } = &hint.kind {
                 current_fn = Some((hint.file.clone(), fn_name.clone()));

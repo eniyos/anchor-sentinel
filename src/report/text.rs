@@ -39,7 +39,11 @@ pub fn print_header(project: &str, rule_count: usize) {
             bright(&format!(
                 "│ {} {:<60} │",
                 bright("⚓"),
-                format!("{} {}", white("anchor-sentinel"), dim(&format!("v{}", env!("CARGO_PKG_VERSION"))))
+                format!(
+                    "{} {}",
+                    white("anchor-sentinel"),
+                    dim(&format!("v{}", env!("CARGO_PKG_VERSION")))
+                )
             ))
         );
         println!(
@@ -109,16 +113,13 @@ fn format_finding_inner(f: &Finding, width_override: Option<usize>) -> String {
     // (instruction) parenthetical. This is the headline of the box.
     if let Some(ix) = &f.instruction {
         body.push(format!(
-            "│ {}  {}",
+            "│ {}  {} {}",
             "▸".dimmed(),
-            format!("{} {}", rule_name_color(&f.rule), dim_label(&format!("({ix})")))
+            rule_name_color(&f.rule),
+            dim_label(&format!("({ix})"))
         ));
     } else {
-        body.push(format!(
-            "│ {}  {}",
-            "▸".dimmed(),
-            rule_name_color(&f.rule)
-        ));
+        body.push(format!("│ {}  {}", "▸".dimmed(), rule_name_color(&f.rule)));
     }
     body.push(String::from("│"));
 

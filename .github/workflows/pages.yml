@@ -64,6 +64,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          echo "PWD: $(pwd)"
+          echo "Listing ./playground:"
+          ls -la ./playground
+          echo "Listing ./playground/pkg:"
+          ls -la ./playground/pkg 2>&1 || true
+          echo "rsync available: $(which rsync)"
           TMPDIR=$(mktemp -d)
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'

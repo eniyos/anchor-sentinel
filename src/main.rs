@@ -9,14 +9,31 @@ mod report;
 mod rules;
 
 use std::process::ExitCode;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use clap::Parser;
 
 use cli::{Cli, Command};
 use engine::{AnalysisContext, Severity};
+use report::spinner::Spinner;
+use report::text;
 
 fn main() -> ExitCode {
+    // Ctrl+C: clear the spinner line (best-effort) and exit 130 in red.
+    // The `termination` feature on ctrlc forwards SIGINT/SIGTERM to
+    // the default handler so the process actually exits; without it
+    // we'd just install a no-op handler.
+    let _ = ctrlc::set_handler(|| {
+        use std::io::Write;
+        // Clear any spinner line.
+        let _ = std::io::stderr().write_all(b"\r\x1b[2K\r");
+        let _ = std::io::stderr().flush();
+        eprintln!();
+        eprintln!("  ✗ Interrupted");
+        std::process::exit(130);
+    });
+
     let cli = Cli::parse();
 
     match run(cli) {
@@ -42,8 +59,6 @@ fn run(cli: Cli) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Command::Version => {
-            // clap prints the version automatically with `--version`; for
-            // the explicit subcommand, print build info.
             println!("sentinel {}", env!("CARGO_PKG_VERSION"));
             Ok(ExitCode::SUCCESS)
         }
@@ -62,16 +77,27 @@ fn cmd_scan(
         anyhow::bail!("project path does not exist: {}", project.display());
     }
 
+    // Spinner + header only apply to the human-readable text format.
+    // For JSON and SARIF, we must keep stdout byte-clean so the
+    // machine-readable output stays parseable.
+    let rule_count = engine::registry::list_rule_ids().len();
+    if matches!(format, cli::OutputFormat::Text) {
+        text::print_header(&project.display().to_string(), rule_count);
+    }
+
+    let spinner = Spinner::start("Loading IDL files...");
     let loaded = loader::load(project).context("loading project")?;
     if loaded.idl_files.is_empty() {
+        spinner.finish();
         anyhow::bail!(
             "no IDL files found. Run `anchor build` inside the project first \
              so that target/idl/*.json is populated."
         );
     }
-
     let programs = loader::parse_idls(&loaded).context("parsing IDLs")?;
+    spinner.set_message("Parsing Rust source...");
     let ast_hints = ast::collect_hints(&loaded.programs).context("collecting AST hints")?;
+    spinner.set_message(&format!("Running {rule_count} rules..."));
 
     let mut all_findings = Vec::new();
     for ir in &programs {
@@ -81,6 +107,8 @@ fn cmd_scan(
         };
         all_findings.extend(engine::run_all_rules(&ctx)?);
     }
+    // Stop the spinner before we print anything else.
+    spinner.finish();
 
     // Apply --ignore.
     if !ignore.is_empty() {
@@ -93,15 +121,21 @@ fn cmd_scan(
         all_findings.retain(|f| f.severity >= min);
     }
 
+    let started = Instant::now();
     match format {
         cli::OutputFormat::Sarif => {
+            // Machine-readable: byte-for-byte identical to v0.1.
             println!("{}", report::sarif::render(&all_findings));
         }
         cli::OutputFormat::Json => {
+            // Machine-readable: byte-for-byte identical to v0.1.
             println!("{}", report::json::render(&all_findings));
         }
         cli::OutputFormat::Text => {
-            println!("{}", report::text::format_findings(&all_findings));
+            // Print findings (with optional reveal animation) and
+            // then the summary footer.
+            text::format_findings(&all_findings);
+            text::print_summary_footer(&all_findings, started.elapsed());
         }
     }
 
@@ -109,7 +143,6 @@ fn cmd_scan(
     let has_blocking = if let Some(min) = min {
         all_findings.iter().any(|f| f.severity >= min)
     } else {
-        // No explicit min — but `--strict` implies "anything non-info".
         strict && all_findings.iter().any(|f| f.severity > Severity::Info)
     };
 
@@ -121,11 +154,5 @@ fn cmd_scan(
 }
 
 fn cmd_rules() {
-    let mut rows: Vec<(&str, Severity, &str)> = engine::registry::list_rule_ids();
-    rows.sort_by_key(|(id, _, _)| *id);
-    println!("{:<22} {:<10} DESCRIPTION", "RULE", "SEVERITY");
-    println!("{}", "-".repeat(72));
-    for (id, sev, desc) in rows {
-        println!("{:<22} {:<10} {}", id, sev.as_str(), desc);
-    }
+    text::print_rules_table();
 }

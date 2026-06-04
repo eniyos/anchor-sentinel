@@ -49,13 +49,15 @@ jobs:
         # setup, leaving the deployed page unable to find its WASM
         # module. A direct `git push` to gh-pages is more reliable
         # and easier to reason about.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TMPDIR=$(mktemp -d)
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git clone --depth=1 --branch=gh-pages \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "$TMPDIR"
           # Wipe the old gh-pages tree, then copy the fresh build in.
           # We `rm -rf` and re-`cp` rather than relying on `cp` to

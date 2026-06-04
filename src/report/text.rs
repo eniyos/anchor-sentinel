@@ -21,28 +21,36 @@ const BOX_WIDTH: usize = 76;
 /// Print the scan header (anchor logo, project path, rule summary).
 /// Returns nothing; writes to stdout. Plain text when not a TTY.
 pub fn print_header(project: &str, rule_count: usize) {
-    let cyan = |s: &str| s.cyan().bold().to_string();
     let dim = |s: &str| s.dimmed().to_string();
     let white = |s: &str| s.white().bold().to_string();
+    let bright = |s: &str| s.bright_cyan().bold().to_string();
 
     if tty::interactive() {
-        println!("{}", cyan(&format!("┌{}┐", "─".repeat(BOX_WIDTH - 2))));
+        // Rounded box: ╭──…──╮ / │ / ╰──…──╯ gives a softer, more
+        // modern look than the squarer ┌/└ variants. The top border
+        // gets a small ⚓ glyph centered as a "logo mark" — subtle
+        // but immediately recognizable.
+        let inner = BOX_WIDTH - 2;
+        let top = format!("╭{}╮", "─".repeat(inner));
+        let bot = format!("╰{}╯", "─".repeat(inner));
+        println!("{}", bright(&top));
         println!(
             "{}",
-            cyan(&format!(
+            bright(&format!(
                 "│ {} {:<60} │",
-                white("⚓ anchor-sentinel"),
-                dim(&format!("v{}", env!("CARGO_PKG_VERSION")))
+                bright("⚓"),
+                format!("{} {}", white("anchor-sentinel"), dim(&format!("v{}", env!("CARGO_PKG_VERSION"))))
             ))
         );
         println!(
             "{}",
-            cyan(&format!(
-                "│ {:<74} │",
-                "Solana smart contract security analyzer"
+            bright(&format!(
+                "│ {:<width$} │",
+                "Solana smart contract security analyzer",
+                width = inner - 2
             ))
         );
-        println!("{}", cyan(&format!("└{}┘", "─".repeat(BOX_WIDTH - 2))));
+        println!("{}", bright(&bot));
     } else {
         // Plain text: still include the info, just without the box.
         println!("anchor-sentinel v{}", env!("CARGO_PKG_VERSION"));
@@ -80,41 +88,39 @@ pub fn format_finding(f: &Finding) -> String {
 
 fn format_finding_inner(f: &Finding, width_override: Option<usize>) -> String {
     let width = width_override.unwrap_or(BOX_WIDTH);
-    // Top border: `┌──…── <SEVERITY> ──┐` with the severity badge
-    // hugging the right edge.
+    // Top border: `╭──…── <SEVERITY> ──╮` with the severity badge
+    // hugging the right edge. Rounded corners give a softer feel.
     let sev_label = format!(" {} ", f.severity.as_str().to_uppercase());
     let pad = width.saturating_sub(2 + sev_label.chars().count() + 1);
     let top = format!(
-        "┌{}{}{}┐",
+        "╭{}{}{}╮",
         "─".repeat(pad),
         severity_color(f.severity, &sev_label),
         "─"
     );
-    let bottom = format!("└{}┘", "─".repeat(width - 2));
+    let bottom = format!("╰{}╯", "─".repeat(width - 2));
 
     // Body rows: pad the label column to 7 so the values line up.
     let label_w = 7usize;
     let dim_label = |s: &str| s.dimmed().to_string();
     let mut body: Vec<String> = Vec::new();
 
+    // First body row: bold rule name with a small ▸ prefix and
+    // (instruction) parenthetical. This is the headline of the box.
     if let Some(ix) = &f.instruction {
         body.push(format!(
             "│ {}  {}",
-            dim_label(&format!("{:<w$}", "rule", w = label_w)),
-            rule_name_color(&f.rule)
-        ));
-        body.push(format!(
-            "│ {}  {}",
-            dim_label(&format!("{:<w$}", "instr", w = label_w)),
-            ix
+            "▸".dimmed(),
+            format!("{} {}", rule_name_color(&f.rule), dim_label(&format!("({ix})")))
         ));
     } else {
         body.push(format!(
             "│ {}  {}",
-            dim_label(&format!("{:<w$}", "rule", w = label_w)),
+            "▸".dimmed(),
             rule_name_color(&f.rule)
         ));
     }
+    body.push(String::from("│"));
 
     if let Some(acct) = &f.account {
         body.push(format!(
@@ -337,8 +343,7 @@ fn render_bar(n: usize, total: usize, _interactive: bool) -> String {
         return "░".repeat(WIDTH);
     }
     let filled = (n * WIDTH) / total;
-    let empty = WIDTH - filled;
-    format!("{}{}", "█".repeat(filled), "░".repeat(empty))
+    format!("{}{}", "█".repeat(filled), "░".repeat(WIDTH - filled))
 }
 
 fn print_animated_bar(
@@ -348,22 +353,34 @@ fn print_animated_bar(
     n: usize,
     final_colored: &ColoredString,
 ) {
-    // We re-render the bar progressively rather than parsing the
-    // prebuilt one. The label and percentage stay constant; only the
-    // bar's filled/empty split changes. We sleep 25ms per char of
-    // the bar for a smooth fill animation.
+    // The bar fills left-to-right at 25ms/char, with a bright
+    // "shimmer head" (▓) that races ahead of the filled portion and
+    // fades out as it crosses. The shimmer is the visual signature
+    // — it makes the fill feel like liquid pouring in rather than a
+    // blocky resize.
     const WIDTH: usize = 30;
-    let mut line = String::new();
-    line.push_str(label);
     let pct = n
         .checked_mul(100)
         .and_then(|x| x.checked_div(total))
         .unwrap_or(0);
     for i in 0..=WIDTH {
         let filled = (n * i) / WIDTH.max(1);
-        let empty = WIDTH - filled;
-        let bar = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
-        // Re-print the line in place using ANSI clear-line + CR.
+        // The leading edge of the bar: a brighter "shimmer" block.
+        // Renders 1 char ahead of the filled portion (clamped at
+        // the bar's right edge) so the head visibly leads the fill.
+        let shimmer = if filled < WIDTH { filled } else { WIDTH - 1 };
+        let mut bar = String::with_capacity(WIDTH * 3);
+        for j in 0..WIDTH {
+            let ch = if j < filled {
+                "█"
+            } else if j == shimmer && tty::interactive() {
+                // Bright white shimmer head — the only colored cell.
+                "▓"
+            } else {
+                "░"
+            };
+            bar.push_str(ch);
+        }
         let row = format!("{}{}  ({}%)", label, bar, pct);
         eprint!("\r\x1b[2K{row}");
         let _ = std::io::stderr().flush();
@@ -373,11 +390,6 @@ fn print_animated_bar(
     println!();
     eprint!("\r\x1b[2K");
     println!("{}", final_colored);
-    // Note: the bar uses a yellow/cyan/etc. color applied per severity;
-    // the animated frames above intentionally render in the default
-    // (dim white) so the animation is visible against any background,
-    // then the final line switches to the severity color.
-    let _ = line; // suppress unused warning
 }
 
 /// Helper that returns a `ColoredString` for a given severity, used by

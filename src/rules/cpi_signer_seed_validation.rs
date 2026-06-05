@@ -23,7 +23,9 @@
 
 use anyhow::Result;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity, SignerSeedClass};
+use crate::engine::{
+    AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity, SignerSeedClass,
+};
 
 pub struct CpiSignerSeedValidation;
 

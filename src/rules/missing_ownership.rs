@@ -13,7 +13,9 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::engine::{field_hint_index, AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
+use crate::engine::{
+    field_hint_index, AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity,
+};
 
 pub struct MissingOwnership;
 

@@ -93,10 +93,11 @@ jobs:
               FAIL=1
             fi
             # Verify scanner produced recognizable output (not a crash).
-            # Match on text report markers: the box-drawing severity
-            # badge in the polished layout ("── CRITICAL ──"), the
-            # "no findings" line, or the per-finding "│ rule     …" body.
-            if echo "$output" | grep -qE 'no findings|─ (CRITICAL|HIGH|MEDIUM|LOW|INFO) ─|│ rule'; then
+            # The redesigned CLI prints: the "Security Overview" header
+            # + a "Risk Score" line on every scan; either a "✔ no
+            # findings" line on clean fixtures, or a "●" bullet per
+            # finding on vulnerable ones. Match on any of these.
+            if echo "$output" | grep -qE 'no findings|Security Overview|Risk Score|● '; then
               echo "  output: OK"
             else
               echo "  ERROR: scanner produced no recognizable output"

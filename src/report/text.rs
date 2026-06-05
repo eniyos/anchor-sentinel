@@ -55,11 +55,9 @@ pub struct ScanReport<'a> {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 mod risk {
-    use super::Severity;
-
     /// Compute the 0..=100 risk score from severity counts.
     pub fn score(c: usize, h: usize, m: usize, l: usize) -> u32 {
-        let penalty = (c as u32) * 25 + (h as u32) * 8 + (m as u32) * 3 + (l as u32) * 1;
+        let penalty = (c as u32) * 25 + (h as u32) * 8 + (m as u32) * 3 + l as u32;
         100u32.saturating_sub(penalty)
     }
 
@@ -128,15 +126,24 @@ mod risk {
         if s >= 50 {
             // Review required — surface the highest present severity.
             if h > 0 {
-                return pluralize(h, "high-severity finding requires", "high-severity findings require")
-                    + " review before deployment.";
+                return pluralize(
+                    h,
+                    "high-severity finding requires",
+                    "high-severity findings require",
+                ) + " review before deployment.";
             }
             if m > 0 {
-                return pluralize(m, "medium-severity finding requires", "medium-severity findings require")
-                    + " review before deployment.";
+                return pluralize(
+                    m,
+                    "medium-severity finding requires",
+                    "medium-severity findings require",
+                ) + " review before deployment.";
             }
-            return pluralize(l, "low-severity finding requires", "low-severity findings require")
-                + " review before deployment.";
+            return pluralize(
+                l,
+                "low-severity finding requires",
+                "low-severity findings require",
+            ) + " review before deployment.";
         }
         // Score <50 with no critical: high-count saturated the score.
         // Surface the dominant severity in the follow-up.
@@ -145,8 +152,11 @@ mod risk {
                 + " blocking deployment.";
         }
         if m > 0 {
-            return pluralize(m, "medium-severity finding is", "medium-severity findings are")
-                + " blocking deployment.";
+            return pluralize(
+                m,
+                "medium-severity finding is",
+                "medium-severity findings are",
+            ) + " blocking deployment.";
         }
         pluralize(l, "low-severity finding is", "low-severity findings are")
             + " blocking deployment."
@@ -176,7 +186,10 @@ pub fn print_hero(project: &str) {
             "Anchor Sentinel".white().bold(),
             format!("v{}", env!("CARGO_PKG_VERSION")).dimmed()
         );
-        println!("{}", "Static Security Analysis for Solana Programs".dimmed());
+        println!(
+            "{}",
+            "Static Security Analysis for Solana Programs".dimmed()
+        );
         println!();
         println!("{}  {}", "Target:".dimmed(), project);
     } else {
@@ -230,11 +243,7 @@ pub fn print_pipeline(timings: &ScanTimings) {
     };
     println!();
     if tty::interactive() {
-        println!(
-            "{} {}",
-            "Completed in".dimmed(),
-            total_str.white().bold()
-        );
+        println!("{} {}", "Completed in".dimmed(), total_str.white().bold());
     } else {
         println!("Completed in {total_str}");
     }
@@ -265,11 +274,7 @@ pub fn print_security_overview(findings: &[Finding]) {
         println!();
         println!("{:<15}{}", "Risk Score", format!("{s}/100").white().bold());
         println!("{:<15}{}", "Grade", g.white().bold());
-        println!(
-            "{:<15}{}",
-            "Verdict",
-            label_string_colored(label).bold()
-        );
+        println!("{:<15}{}", "Verdict", label_string_colored(label).bold());
         println!();
         println!("{}", follow);
     } else {
@@ -348,7 +353,13 @@ pub fn print_findings(findings: &[Finding]) {
 
         // Group header.
         if tty::interactive() {
-            println!("{}", sev.as_str().to_uppercase().bold().color(severity_color(sev)));
+            println!(
+                "{}",
+                sev.as_str()
+                    .to_uppercase()
+                    .bold()
+                    .color(severity_color(sev))
+            );
         } else {
             println!("{}", sev.as_str().to_uppercase());
         }
@@ -433,20 +444,13 @@ pub fn print_statistics(report: &ScanReport) {
     println!();
     let rows: [(&str, String); 4] = [
         ("Files analyzed", report.programs.to_string()),
-        (
-            "Instructions analyzed",
-            report.instructions.to_string(),
-        ),
+        ("Instructions analyzed", report.instructions.to_string()),
         ("Rules executed", report.rules_executed.to_string()),
         ("Findings detected", report.findings.len().to_string()),
     ];
     for (label, value) in rows {
         if tty::interactive() {
-            println!(
-                "{:<22}{}",
-                label,
-                value.bold()
-            );
+            println!("{:<22}{}", label, value.bold());
         } else {
             println!("{label:<22}{value}");
         }
@@ -618,17 +622,14 @@ pub fn print_rules_table() {
     const SEV_W: usize = 10;
     const LAYER_W: usize = 8;
 
-    if tty::interactive() {
-        println!(
-            "{:<ID_W$}  {:<NAME_W$}  {:<SEV_W$}  {:<LAYER_W$}",
-            "ID", "Rule", "Severity", "Layer"
-        );
-    } else {
-        println!(
-            "{:<ID_W$}  {:<NAME_W$}  {:<SEV_W$}  {:<LAYER_W$}",
-            "ID", "Rule", "Severity", "Layer"
-        );
-    }
+    // The header row is plain text in both TTY and non-TTY modes —
+    // column alignment is what matters here, not color. The cargo-style
+    // table is intentionally monochrome so it reads the same in logs
+    // and on a terminal.
+    println!(
+        "{:<ID_W$}  {:<NAME_W$}  {:<SEV_W$}  {:<LAYER_W$}",
+        "ID", "Rule", "Severity", "Layer"
+    );
 
     // Sort by severity (Critical first) then by id alphabetically.
     let mut sorted = rules;

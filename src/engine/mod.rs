@@ -325,6 +325,8 @@ pub enum AstHintKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layer {
     /// IDL-only — needs nothing beyond the parsed `target/idl/*.json`.
+    /// Reserved for future IDL-only rules; no current rule uses it.
+    #[allow(dead_code)]
     Idl,
     /// AST-only — needs the Rust source via the proc-macro AST hints.
     Ast,

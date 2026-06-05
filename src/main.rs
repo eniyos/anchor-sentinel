@@ -16,19 +16,23 @@ use clap::Parser;
 
 use cli::{Cli, Command};
 use engine::{AnalysisContext, Severity};
-use report::spinner::Spinner;
 use report::text;
 
+/// Total wall-clock spent in the scan phases (used to drive the
+/// exit-code / strict-mode decision and to populate the Statistics
+/// section's timings).
+struct ScanTimings {
+    load: std::time::Duration,
+    parse_idls: std::time::Duration,
+    ast_hints: std::time::Duration,
+    run_rules: std::time::Duration,
+    total: std::time::Duration,
+}
+
 fn main() -> ExitCode {
-    // Ctrl+C: clear the spinner line (best-effort) and exit 130 in red.
-    // The `termination` feature on ctrlc forwards SIGINT/SIGTERM to
-    // the default handler so the process actually exits; without it
-    // we'd just install a no-op handler.
+    // Ctrl+C: exit 130. We don't run the spinner anymore, so the
+    // "clear the spinner line" branch is gone.
     let _ = ctrlc::set_handler(|| {
-        use std::io::Write;
-        // Clear any spinner line.
-        let _ = std::io::stderr().write_all(b"\r\x1b[2K\r");
-        let _ = std::io::stderr().flush();
         eprintln!();
         eprintln!("  ✗ Interrupted");
         std::process::exit(130);
@@ -77,28 +81,39 @@ fn cmd_scan(
         anyhow::bail!("project path does not exist: {}", project.display());
     }
 
-    // Spinner + header only apply to the human-readable text format.
-    // For JSON and SARIF, we must keep stdout byte-clean so the
-    // machine-readable output stays parseable.
-    let rule_count = engine::registry::list_rule_ids().len();
+    // The text-only path opens with the hero, runs the scan, then
+    // prints the 6 sections in order. JSON/SARIF bypass the entire
+    // text path to keep stdout byte-clean for machine consumers.
     if matches!(format, cli::OutputFormat::Text) {
-        text::print_header(&project.display().to_string(), rule_count);
+        text::print_hero(&project.display().to_string());
     }
 
-    let spinner = Spinner::start("Loading IDL files...");
+    // Per-stage timing. Each `Instant::now()` is right before the
+    // work, `.elapsed()` right after. The five phases map to the
+    // Pipeline section's 5 rows (Loaded rules / Parsed IDL / Built
+    // AST / Indexed accounts / Executed security checks) plus the
+    // wall-clock total.
+    let t_total_start = Instant::now();
+
+    let t_load_start = Instant::now();
     let loaded = loader::load(project).context("loading project")?;
     if loaded.idl_files.is_empty() {
-        spinner.finish();
         anyhow::bail!(
             "no IDL files found. Run `anchor build` inside the project first \
              so that target/idl/*.json is populated."
         );
     }
-    let programs = loader::parse_idls(&loaded).context("parsing IDLs")?;
-    spinner.set_message("Parsing Rust source...");
-    let ast_hints = ast::collect_hints(&loaded.programs).context("collecting AST hints")?;
-    spinner.set_message(&format!("Running {rule_count} rules..."));
+    let t_load = t_load_start.elapsed();
 
+    let t_parse_start = Instant::now();
+    let programs = loader::parse_idls(&loaded).context("parsing IDLs")?;
+    let t_parse = t_parse_start.elapsed();
+
+    let t_ast_start = Instant::now();
+    let ast_hints = ast::collect_hints(&loaded.programs).context("collecting AST hints")?;
+    let t_ast = t_ast_start.elapsed();
+
+    let t_rules_start = Instant::now();
     let mut all_findings = Vec::new();
     for ir in &programs {
         let ctx = AnalysisContext {
@@ -107,8 +122,16 @@ fn cmd_scan(
         };
         all_findings.extend(engine::run_all_rules(&ctx)?);
     }
-    // Stop the spinner before we print anything else.
-    spinner.finish();
+    let t_rules = t_rules_start.elapsed();
+    let t_total = t_total_start.elapsed();
+
+    let timings = ScanTimings {
+        load: t_load,
+        parse_idls: t_parse,
+        ast_hints: t_ast,
+        run_rules: t_rules,
+        total: t_total,
+    };
 
     // Apply --ignore.
     if !ignore.is_empty() {
@@ -121,7 +144,12 @@ fn cmd_scan(
         all_findings.retain(|f| f.severity >= min);
     }
 
-    let started = Instant::now();
+    // Compute the aggregate counts once. Used by both the text
+    // sections and the exit-code decision.
+    let rule_count = engine::registry::list_rule_ids().len();
+    let programs_count = loaded.programs.len();
+    let instructions_count: usize = programs.iter().map(|p| p.instructions.len()).sum();
+
     match format {
         cli::OutputFormat::Sarif => {
             // Machine-readable: byte-for-byte identical to v0.1.
@@ -132,10 +160,28 @@ fn cmd_scan(
             println!("{}", report::json::render(&all_findings));
         }
         cli::OutputFormat::Text => {
-            // Print findings (with optional reveal animation) and
-            // then the summary footer.
-            text::format_findings(&all_findings);
-            text::print_summary_footer(&all_findings, started.elapsed());
+            // Sectioned text output. The order is: hero (already
+            // printed above) → pipeline → overview → findings →
+            // statistics → verdict. Each section is a single
+            // println!-driven function in `text`.
+            let report = text::ScanReport {
+                timings: text::ScanTimings {
+                    load: timings.load,
+                    parse_idls: timings.parse_idls,
+                    ast_hints: timings.ast_hints,
+                    run_rules: timings.run_rules,
+                    total: timings.total,
+                },
+                programs: programs_count,
+                instructions: instructions_count,
+                rules_executed: rule_count,
+                findings: &all_findings,
+            };
+            text::print_pipeline(&report.timings);
+            text::print_security_overview(&all_findings);
+            text::print_findings(&all_findings);
+            text::print_statistics(&report);
+            text::print_verdict(&all_findings);
         }
     }
 

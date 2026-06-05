@@ -11,7 +11,7 @@ Set PlaybackSpeed 1.0
 Type "sentinel scan ./tests/fixtures/vault-vulnerable"
 Sleep 500ms
 Enter
-Sleep 6s
+Sleep 8s
 
 # Clear and show rules list
 Type "clear"
@@ -20,4 +20,4 @@ Sleep 300ms
 Type "sentinel rules"
 Sleep 500ms
 Enter
-Sleep 3s
+Sleep 4s

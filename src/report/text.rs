@@ -1,229 +1,532 @@
 //! Human-readable CLI output. This is the only place in the codebase
-//! that emits ANSI color, Unicode box-drawing, or animated output;
-//! `format_findings` returns plain text and is the single entry point
-//! used by `main.rs`.
+//! that emits ANSI color or Unicode glyphs; `format_findings` and the
+//! six `print_*` helpers return plain text and are the single entry
+//! points used by `main.rs`.
 //!
-//! All color/animation calls are gated on `tty::interactive()`, so
-//! the test suite (which pipes stdout) gets a clean plain-text
-//! stream and the snapshot/integration tests don't need to filter
-//! ANSI escape codes.
+//! All color calls are gated on `tty::interactive()`, so the test
+//! suite (which pipes stdout) gets a clean plain-text stream and the
+//! snapshot/integration tests don't need to filter ANSI escape codes.
+//!
+//! Design tenets (see /Users/enjo/.claude/plans/soft-doodling-stonebraker.md):
+//!   1. Information first — risk + critical findings + verdict visible in 3s.
+//!   2. Severity driven — Critical dominates; Medium never competes visually.
+//!   3. Progressive disclosure — overview → findings → details.
+//!   4. Spacing over boxes — at most three "cards" (hero, overview, verdict).
+//!   5. Cargo-style tables (no box drawing) for the `sentinel rules` listing.
 
-use std::io::Write;
 use std::time::Duration;
 
 use colored::*;
 
-use crate::engine::{Finding, Severity};
+use crate::engine::{Finding, Layer, Severity};
 use crate::report::tty;
 
-// Box width is the total visible width of every box the formatter
-// draws — header, finding, summary separator, summary row. 110 chars
-// gives enough horizontal breathing room for long file paths and
-// `require!(...)` hints without forcing a wrap on typical messages.
-const BOX_WIDTH: usize = 110;
-const CONTENT_INDENT: usize = 2;
-const CONTENT_WIDTH: usize = BOX_WIDTH - 2; // 108 — chars between the two `│`s
-const WRAP_WIDTH: usize = CONTENT_WIDTH - CONTENT_INDENT; // 106 — chars after the indent
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Public types: what the caller hands us.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/// Print the scan header (anchor logo, project path, rule summary).
-/// Returns nothing; writes to stdout. Plain text when not a TTY.
-pub fn print_header(project: &str, rule_count: usize) {
-    let dim = |s: &str| s.dimmed().to_string();
-    let white = |s: &str| s.white().bold().to_string();
-    let bright = |s: &str| s.bright_cyan().bold().to_string();
+/// Per-stage durations measured by `main.rs` around the four scan
+/// phases, plus a wall-clock total. All fields are wall-clock from
+/// the start of the corresponding phase (or the whole scan, for
+/// `total`).
+#[derive(Debug, Clone, Copy)]
+pub struct ScanTimings {
+    pub load: Duration,
+    pub parse_idls: Duration,
+    pub ast_hints: Duration,
+    pub run_rules: Duration,
+    pub total: Duration,
+}
+
+/// Everything `main.rs` knows about a finished scan, bundled for the
+/// sectioned printers. Borrow-only — the caller owns the underlying
+/// data and is responsible for outliving these printers.
+pub struct ScanReport<'a> {
+    pub timings: ScanTimings,
+    pub programs: usize,
+    pub instructions: usize,
+    pub rules_executed: usize,
+    pub findings: &'a [Finding],
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Risk score model. See the plan: penalty = crit*25 + high*8 + med*3 + low*1,
+// score = max(0, 100 - penalty). Critical findings always override to BLOCKED.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+mod risk {
+    use super::Severity;
+
+    /// Compute the 0..=100 risk score from severity counts.
+    pub fn score(c: usize, h: usize, m: usize, l: usize) -> u32 {
+        let penalty = (c as u32) * 25 + (h as u32) * 8 + (m as u32) * 3 + (l as u32) * 1;
+        100u32.saturating_sub(penalty)
+    }
+
+    /// Letter grade derived from the score. A=90-100, B=75-89, C=50-74,
+    /// D=25-49, F=0-24. Bounded on both ends — saturating_sub in
+    /// `score` keeps us in 0..=100 so the match is exhaustive over
+    /// the natural range.
+    pub fn grade(s: u32) -> &'static str {
+        match s {
+            90..=100 => "A",
+            75..=89 => "B",
+            50..=74 => "C",
+            25..=49 => "D",
+            _ => "F",
+        }
+    }
+
+    /// Authoritative deployment recommendation. Critical findings
+    /// always produce `Blocked`, regardless of score. Otherwise the
+    /// score decides: 90+ → Approved, 50-89 → ReviewRequired,
+    /// <50 → Blocked.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Verdict {
+        Approved,
+        ReviewRequired,
+        Blocked,
+    }
+
+    /// The `(verdict, label)` pair the verdict printer renders. The
+    /// `&'static str` is the headline (e.g. `"DEPLOYMENT BLOCKED"`);
+    /// the follow-up sentence is generated separately.
+    pub fn verdict(c: usize, h: usize, m: usize, l: usize) -> (Verdict, &'static str) {
+        if c >= 1 {
+            return (Verdict::Blocked, "DEPLOYMENT BLOCKED");
+        }
+        let s = score(c, h, m, l);
+        match s {
+            90..=100 => (Verdict::Approved, "DEPLOYMENT APPROVED"),
+            50..=89 => (Verdict::ReviewRequired, "DEPLOYMENT REVIEW REQUIRED"),
+            _ => (Verdict::Blocked, "DEPLOYMENT BLOCKED"),
+        }
+    }
+
+    /// One-sentence follow-up for the verdict. Used by the Security
+    /// Overview block and the final Verdict block. The sentences are
+    /// designed to read naturally at any count — `1 finding` is
+    /// pluralized to `1 finding`, larger counts are bare plurals.
+    pub fn follow_up(c: usize, h: usize, m: usize, l: usize) -> String {
+        // Critical override: always this exact phrasing, regardless of
+        // the score. Matches the user's spec example verbatim.
+        if c >= 1 {
+            return pluralize(c, "Critical finding", "Critical findings")
+                + " must be resolved before deployment.";
+        }
+        let s = score(c, h, m, l);
+        if s >= 90 {
+            // Approved path. The plan says "No critical findings
+            // detected" is the approved-state subline. We generalize
+            // to "No critical or high-severity findings detected" when
+            // both are zero, and to a count summary otherwise.
+            if h == 0 && m == 0 && l == 0 {
+                return "No findings detected. Codebase is clean.".to_string();
+            }
+            return "No critical findings detected.".to_string();
+        }
+        if s >= 50 {
+            // Review required — surface the highest present severity.
+            if h > 0 {
+                return pluralize(h, "high-severity finding requires", "high-severity findings require")
+                    + " review before deployment.";
+            }
+            if m > 0 {
+                return pluralize(m, "medium-severity finding requires", "medium-severity findings require")
+                    + " review before deployment.";
+            }
+            return pluralize(l, "low-severity finding requires", "low-severity findings require")
+                + " review before deployment.";
+        }
+        // Score <50 with no critical: high-count saturated the score.
+        // Surface the dominant severity in the follow-up.
+        if h > 0 {
+            return pluralize(h, "high-severity finding is", "high-severity findings are")
+                + " blocking deployment.";
+        }
+        if m > 0 {
+            return pluralize(m, "medium-severity finding is", "medium-severity findings are")
+                + " blocking deployment.";
+        }
+        pluralize(l, "low-severity finding is", "low-severity findings are")
+            + " blocking deployment."
+    }
+
+    fn pluralize(n: usize, singular: &str, plural: &str) -> String {
+        let word = if n == 1 { singular } else { plural };
+        format!("{n} {word}")
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Section 1 — Hero
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Print the scan opener: a brand line, a tagline, and the target
+/// path. Three lines plus a blank. No box, no animation.
+pub fn print_hero(project: &str) {
+    if tty::interactive() {
+        // The brand line: ⚓ glyph in bright_cyan+bold, "Anchor Sentinel"
+        // in white+bold, version in dim. Per the spec the human-readable
+        // name is "Anchor Sentinel" (two words, title case), not the
+        // kebab-case binary name.
+        println!(
+            "{} {} {}",
+            "⚓".bright_cyan().bold(),
+            "Anchor Sentinel".white().bold(),
+            format!("v{}", env!("CARGO_PKG_VERSION")).dimmed()
+        );
+        println!("{}", "Static Security Analysis for Solana Programs".dimmed());
+        println!();
+        println!("{}  {}", "Target:".dimmed(), project);
+    } else {
+        println!("Anchor Sentinel v{}", env!("CARGO_PKG_VERSION"));
+        println!("Static Security Analysis for Solana Programs");
+        println!();
+        println!("Target:  {}", project);
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Section 2 — Pipeline
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Print the 5-stage pipeline status with per-stage durations. The
+/// `✓` is green; labels are plain; durations are dim and right-aligned
+/// in a 6-char field. TTY vs non-TTY diverge only on color, not on
+/// content — the test suite sees a clean plain-text pipeline.
+pub fn print_pipeline(timings: &ScanTimings) {
+    let stages: [(&str, Duration); 5] = [
+        ("Loaded rules", timings.load),
+        ("Parsed IDL", timings.parse_idls),
+        ("Built AST", timings.ast_hints),
+        ("Indexed accounts", timings.ast_hints),
+        ("Executed security checks", timings.run_rules),
+    ];
+    for (label, dur) in stages {
+        let ms = dur.as_secs_f64() * 1000.0;
+        // Print duration as `412ms` for sub-second and `1.23s` for >= 1s.
+        let dur_str = if ms < 1000.0 {
+            format!("{:.0}ms", ms)
+        } else {
+            format!("{:.2}s", ms / 1000.0)
+        };
+        if tty::interactive() {
+            println!(
+                "{}  {:<26}{}",
+                "✓".green().bold(),
+                label,
+                format!("{dur_str:>8}").dimmed()
+            );
+        } else {
+            println!("✓  {label:<26}{dur_str:>8}");
+        }
+    }
+    let total_ms = timings.total.as_secs_f64() * 1000.0;
+    let total_str = if total_ms < 1000.0 {
+        format!("{:.0}ms", total_ms)
+    } else {
+        format!("{:.2}s", total_ms / 1000.0)
+    };
+    println!();
+    if tty::interactive() {
+        println!(
+            "{} {}",
+            "Completed in".dimmed(),
+            total_str.white().bold()
+        );
+    } else {
+        println!("Completed in {total_str}");
+    }
+    println!();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Section 3 — Security Overview
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Print the security overview block: per-severity counts, the risk
+/// score (with grade), and the verdict. The label column is
+/// left-padded to 15 chars so the numbers align vertically.
+pub fn print_security_overview(findings: &[Finding]) {
+    let (c, h, m, l) = count_by_severity(findings);
+    let s = risk::score(c, h, m, l);
+    let g = risk::grade(s);
+    let (_, label) = risk::verdict(c, h, m, l);
+    let follow = risk::follow_up(c, h, m, l);
 
     if tty::interactive() {
-        // Rounded box: ╭──…──╮ / │ / ╰──…──╯ gives a softer, more
-        // modern look than the squarer ┌/└ variants. The top border
-        // gets a small ⚓ glyph centered as a "logo mark" — subtle
-        // but immediately recognizable.
-        let inner = BOX_WIDTH - 2;
-        let top = format!("╭{}╮", "─".repeat(inner));
-        let bot = format!("╰{}╯", "─".repeat(inner));
-        println!("{}", bright(&top));
-        // Build the brand line at the actual content width, with
-        // a single space of padding on either side of the box's `│`.
-        // The previous version hardcoded `:<60}` which over-padded
-        // for short versions and under-padded (overflowed the right
-        // border) for long ones.
-        let brand = format!(
-            "{} {} {}",
-            bright("⚓"),
-            white("anchor-sentinel"),
-            dim(&format!("v{}", env!("CARGO_PKG_VERSION")))
+        println!("{}", "Security Overview".white().bold());
+        println!();
+        println!("{:<15}{}", "Critical", c.to_string().bright_red().bold());
+        println!("{:<15}{}", "High", h.to_string().yellow().bold());
+        println!("{:<15}{}", "Medium", m.to_string().blue().bold());
+        println!("{:<15}{}", "Low", l.to_string().dimmed());
+        println!();
+        println!("{:<15}{}", "Risk Score", format!("{s}/100").white().bold());
+        println!("{:<15}{}", "Grade", g.white().bold());
+        println!(
+            "{:<15}{}",
+            "Verdict",
+            label_string_colored(label).bold()
         );
-        let brand_pad = inner.saturating_sub(brand.chars().count() + 2);
-        let brand_line = if brand_pad > 0 {
-            format!("│ {brand}{} │", " ".repeat(brand_pad))
-        } else {
-            // Brand string is too long for the box — fall back to a
-            // hard wrap on the right border (still pretty).
-            format!("│ {brand} │")
-        };
-        println!("{}", bright(&brand_line));
-        let tagline = "Solana smart contract security analyzer";
-        let tagline_pad = inner.saturating_sub(tagline.chars().count() + 2);
-        let tagline_line = if tagline_pad > 0 {
-            format!("│ {tagline}{} │", " ".repeat(tagline_pad))
-        } else {
-            format!("│ {tagline} │")
-        };
-        println!("{}", bright(&tagline_line));
-        println!("{}", bright(&bot));
+        println!();
+        println!("{}", follow);
     } else {
-        // Plain text: still include the info, just without the box.
-        println!("anchor-sentinel v{}", env!("CARGO_PKG_VERSION"));
-        println!("Solana smart contract security analyzer");
+        println!("Security Overview");
+        println!();
+        println!("{:<15}{c}", "Critical");
+        println!("{:<15}{h}", "High");
+        println!("{:<15}{m}", "Medium");
+        println!("{:<15}{l}", "Low");
+        println!();
+        println!("{:<15}{s}/100", "Risk Score");
+        println!("{:<15}{g}", "Grade");
+        println!("{:<15}{label}", "Verdict");
+        println!();
+        println!("{follow}");
     }
-    println!("Scanning  {}", project);
+}
 
-    // Per-severity counts among the registered rules. Shown as a single
-    // dense line — gives the user an at-a-glance feel for "how noisy is
-    // this codebase likely to be" before any findings print.
-    let rules = crate::engine::registry::list_rule_ids();
-    let mut counts = [0usize; 5];
-    for (_, sev, _) in &rules {
-        match sev {
-            Severity::Critical => counts[4] += 1,
-            Severity::High => counts[3] += 1,
-            Severity::Medium => counts[2] += 1,
-            Severity::Low => counts[1] += 1,
-            Severity::Info => counts[0] += 1,
+/// Color a verdict string by its category. Used by the Security
+/// Overview block; the final Verdict block (Section 6) does the same
+/// coloring via `verdict_color()`.
+fn label_string_colored(label: &str) -> String {
+    if label.contains("APPROVED") {
+        label.green().to_string()
+    } else if label.contains("REVIEW") {
+        label.yellow().to_string()
+    } else {
+        label.red().to_string()
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Section 4 — Findings
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Print all findings, grouped by severity (Critical → Info) and
+/// sorted by location within each group. A separator line of `─` is
+/// drawn between findings within a group; a blank line separates
+/// groups. If there are no findings, prints `✔ no findings` and
+/// returns.
+pub fn print_findings(findings: &[Finding]) {
+    if findings.is_empty() {
+        if tty::interactive() {
+            println!("{}", "✔ no findings".green().bold());
+        } else {
+            println!("✔ no findings");
         }
+        println!();
+        return;
     }
-    let rules_line = format!(
-        "Rules     {} active  ·  {} critical  ·  {} high  ·  {} medium",
-        rule_count, counts[4], counts[3], counts[2]
-    );
-    println!("{}", rules_line);
+
+    // Group by severity in the spec's order: Critical, High, Medium, Low, Info.
+    // We use a single pass + sorted-buckets approach so the output
+    // is deterministic regardless of rule execution order.
+    let order = [
+        Severity::Critical,
+        Severity::High,
+        Severity::Medium,
+        Severity::Low,
+        Severity::Info,
+    ];
+    for sev in order {
+        let mut group: Vec<&Finding> = findings.iter().filter(|f| f.severity == sev).collect();
+        if group.is_empty() {
+            continue;
+        }
+        // Sort by (file, line, column) — the natural read order.
+        group.sort_by(|a, b| {
+            a.file
+                .as_deref()
+                .unwrap_or("")
+                .cmp(b.file.as_deref().unwrap_or(""))
+                .then(a.line.unwrap_or(0).cmp(&b.line.unwrap_or(0)))
+                .then(a.column.unwrap_or(0).cmp(&b.column.unwrap_or(0)))
+        });
+
+        // Group header.
+        if tty::interactive() {
+            println!("{}", sev.as_str().to_uppercase().bold().color(severity_color(sev)));
+        } else {
+            println!("{}", sev.as_str().to_uppercase());
+        }
+        println!();
+
+        for (i, f) in group.iter().enumerate() {
+            print_finding(f);
+            if i + 1 < group.len() {
+                // Separator between findings (not after the last one).
+                println!("{}", "─".repeat(60).dimmed());
+            }
+        }
+        println!();
+    }
 }
 
-/// Format a single finding as the multi-line block shown in the CLI.
-/// The returned String is plain text with ANSI codes when interactive,
-/// or no codes when piped.
-pub fn format_finding(f: &Finding) -> String {
-    format_finding_inner(f, None)
-}
+/// Render a single finding as the multi-line block shown in the CLI.
+/// Uses the `●` glyph (severity-colored) as the bullet, label/value
+/// pairs separated by blank lines, and indentation under each label.
+fn print_finding(f: &Finding) {
+    let sev_color = severity_color(f.severity);
+    let dim = |s: &str| s.dimmed().to_string();
+    let bullet_colored = "●".color(sev_color).bold().to_string();
 
-fn format_finding_inner(f: &Finding, width_override: Option<usize>) -> String {
-    let width = width_override.unwrap_or(BOX_WIDTH);
-    // Top border: `╭──…── <SEVERITY> ──╮` with the severity badge
-    // hugging the right edge. Rounded corners give a softer feel.
-    // The border chars (─, ╭, ╮, ╰, ╯, │) are all colored per
-    // severity so the box's outline communicates the finding's
-    // urgency at a glance.
-    let sev_label = format!(" {} ", f.severity.as_str().to_uppercase());
-    let pad = width.saturating_sub(2 + sev_label.chars().count() + 1);
-    let (top, bottom, side) = severity_border(f.severity, width, pad, &sev_label);
-    // Body rows: pad the label column to 7 so the values line up.
-
-    // Body rows: pad the label column to 7 so the values line up.
-    let label_w = 7usize;
-    let dim_label = |s: &str| s.dimmed().to_string();
-    let mut body: Vec<String> = Vec::new();
-
-    // Helper: build a single body line `│  {content}│` padded to
-    // exactly `width` chars. Both pipes are colored per severity so
-    // the box outline stays consistent. We compute the visible
-    // width of `content` (ignoring ANSI escapes) and pad with
-    // spaces to the inner width.
-    let make_line = |content: String| -> String {
-        let visible = visible_width(&content);
-        let pad = CONTENT_WIDTH.saturating_sub(visible);
-        format!("{side}  {content}{}{side}", " ".repeat(pad))
-    };
-    // Blank separator line: `│{spaces}│` (no indent).
-    let blank = || -> String { format!("{side}{}{side}", " ".repeat(CONTENT_WIDTH)) };
-
-    // First body row: bold rule name with a small ▸ prefix and
-    // (instruction) parenthetical. This is the headline of the box.
-    if let Some(ix) = &f.instruction {
-        let content = format!(
-            "{}  {}{}",
-            "▸".dimmed(),
-            rule_name_color(&f.rule),
-            dim_label(&format!(" ({ix})"))
-        );
-        body.push(make_line(content));
+    // First line: bullet + rule name, optionally with instruction
+    // suffix. Rule name is in the severity color; the instruction
+    // parenthetical is dim.
+    let header = if let Some(ix) = &f.instruction {
+        format!(
+            "{bullet_colored}  {}{}",
+            f.rule.color(sev_color).bold(),
+            dim(&format!("  ·  {ix}"))
+        )
     } else {
-        let content = format!("{}  {}", "▸".dimmed(), rule_name_color(&f.rule));
-        body.push(make_line(content));
+        format!("{bullet_colored}  {}", f.rule.color(sev_color).bold())
+    };
+    println!("{header}");
+
+    // Location
+    if let Some(file) = &f.file {
+        let loc = if let Some(line) = f.line {
+            let col = f.column.map(|c| format!(":{c}")).unwrap_or_default();
+            format!("{file}:{line}{col}")
+        } else {
+            file.clone()
+        };
+        println!();
+        println!("{}", dim("Location:"));
+        println!("  {loc}");
     }
-    body.push(blank());
 
     if let Some(acct) = &f.account {
-        let content = format!(
-            "{}  {}",
-            dim_label(&format!("{:<w$}", "acct", w = label_w)),
-            acct
-        );
-        body.push(make_line(content));
-    }
-    if let (Some(file), Some(line)) = (&f.file, f.line) {
-        let col = f.column.map(|c| format!(":{c}")).unwrap_or_default();
-        let content = format!(
-            "{}  {}:{line}{col}",
-            dim_label(&format!("{:<w$}", "file", w = label_w)),
-            file
-        );
-        body.push(make_line(content));
+        println!();
+        println!("{}", dim("Account:"));
+        println!("  {acct}");
     }
 
-    body.push(blank());
-
-    // Message: wrap on word boundaries at WRAP_WIDTH (76 chars).
-    for (i, seg) in wrap_text(&f.message, WRAP_WIDTH).into_iter().enumerate() {
-        // First line gets the standard 2-space indent; continuations
-        // also use 2 spaces so they line up with the message text.
-        let content = seg;
-        body.push(make_line(content));
-        let _ = i;
+    println!();
+    println!("{}", dim("Problem:"));
+    for line in wrap_text(&f.message, 100) {
+        println!("  {line}");
     }
 
-    body.push(blank());
     if let Some(hint) = &f.hint {
-        // First hint line has a `▶ ` prefix (2 chars). Continuation
-        // lines get the same 2-space indent — they line up with the
-        // start of the message, not with the hint text. This is a
-        // small alignment compromise but keeps the box visually
-        // consistent with messages.
-        let wrapped = wrap_text(hint, WRAP_WIDTH.saturating_sub(2));
-        for (i, seg) in wrapped.into_iter().enumerate() {
-            let content = if i == 0 {
-                format!("{} {}", "▶".dimmed(), seg.dimmed())
-            } else {
-                format!("  {}", seg.dimmed())
-            };
-            body.push(make_line(content));
+        println!();
+        println!("{}", dim("Recommendation:"));
+        for line in wrap_text(hint, 100) {
+            println!("  {line}");
         }
     }
-    body.push(bottom.clone());
+    // Trailing newline is added by the caller (separator or blank line).
+}
 
-    let mut out = String::new();
-    out.push_str(&top);
-    out.push('\n');
-    for (i, line) in body.iter().enumerate() {
-        out.push_str(line);
-        if i + 1 < body.len() {
-            out.push('\n');
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Section 5 — Statistics
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Print a compact 4-row statistics block. Labels are left-padded to
+/// 22 chars, numbers are right-aligned. No header, no border.
+pub fn print_statistics(report: &ScanReport) {
+    println!("{}", "Statistics".white().bold());
+    println!();
+    let rows: [(&str, String); 4] = [
+        ("Files analyzed", report.programs.to_string()),
+        (
+            "Instructions analyzed",
+            report.instructions.to_string(),
+        ),
+        ("Rules executed", report.rules_executed.to_string()),
+        ("Findings detected", report.findings.len().to_string()),
+    ];
+    for (label, value) in rows {
+        if tty::interactive() {
+            println!(
+                "{:<22}{}",
+                label,
+                value.bold()
+            );
+        } else {
+            println!("{label:<22}{value}");
         }
     }
-    out
+    println!();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Section 6 — Verdict (the climax)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Print the final verdict as the visual climax: the headline in
+/// bold + severity color, a blank line, and a one-sentence follow-up.
+pub fn print_verdict(findings: &[Finding]) {
+    let (c, h, m, l) = count_by_severity(findings);
+    let (kind, label) = risk::verdict(c, h, m, l);
+    let follow = risk::follow_up(c, h, m, l);
+    let colored = match kind {
+        risk::Verdict::Approved => label.green().bold(),
+        risk::Verdict::ReviewRequired => label.yellow().bold(),
+        risk::Verdict::Blocked => label.red().bold(),
+    };
+    if tty::interactive() {
+        println!("{colored}");
+        println!();
+        println!("{follow}");
+    } else {
+        println!("{label}");
+        println!();
+        println!("{follow}");
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Helpers
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Tally findings into (critical, high, medium, low) — info is
+/// excluded from the score (spec lists only those four). The
+/// returned tuple's element order matches the penalty weights in
+/// `risk::score` (c, h, m, l) so the call site reads naturally.
+fn count_by_severity(findings: &[Finding]) -> (usize, usize, usize, usize) {
+    let mut c = 0;
+    let mut h = 0;
+    let mut m = 0;
+    let mut l = 0;
+    for f in findings {
+        match f.severity {
+            Severity::Critical => c += 1,
+            Severity::High => h += 1,
+            Severity::Medium => m += 1,
+            Severity::Low | Severity::Info => l += 1,
+        }
+    }
+    (c, h, m, l)
+}
+
+/// Map a severity to its `colored::Color` value. Used by both the
+/// group header and the per-finding bullet. Centralized so the
+/// 4-color palette is consistent across the formatter.
+fn severity_color(sev: Severity) -> colored::Color {
+    match sev {
+        Severity::Critical => colored::Color::BrightRed,
+        Severity::High => colored::Color::Yellow,
+        Severity::Medium => colored::Color::Blue,
+        Severity::Low | Severity::Info => colored::Color::BrightBlack, // dim gray
+    }
 }
 
 /// Visible (display) width of a string, counting Unicode chars but
-/// ignoring ANSI escape sequences. We need this when padding box
-/// lines — the underlying `String` includes the `colored` crate's
-/// ANSI codes, so `s.len()` would over-count.
+/// ignoring ANSI escape sequences. Kept from the previous version;
+/// the new design still uses it implicitly through `colored`'s
+/// `Display` impls, but we keep the function around in case a
+/// future section needs to right-pad colored text.
+#[allow(dead_code)]
 fn visible_width(s: &str) -> usize {
-    // Walk through the string char by char, skipping CSI sequences
-    // (`\x1b[...m`).
     let mut count = 0usize;
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            // Skip until we hit a letter (the final byte of a CSI
-            // sequence is in `[A-Za-z]`).
             for nc in chars.by_ref() {
                 if nc.is_ascii_alphabetic() {
                     break;
@@ -236,19 +539,18 @@ fn visible_width(s: &str) -> usize {
     count
 }
 
-/// Word-wrap `text` so that no line exceeds `max_width` visible chars.
+/// Word-wrap `text` so no line exceeds `max_width` visible chars.
 /// Lines are broken on whitespace; if a single word is longer than
-/// `max_width` it is truncated to `max_width - 1` chars and `…` is
-/// appended. Returns a `Vec<String>` of the wrapped lines (without
-/// any leading/trailing padding).
+/// `max_width` it is truncated to `max_width - 1` chars with `…`
+/// appended. Returns a `Vec<String>` of wrapped lines.
+///
+/// Width spec per the user's plan: 100 chars (matches the new
+/// findings layout, which has 2 chars of indent plus content).
 fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
     if max_width == 0 {
         return vec![text.to_string()];
     }
     let mut out: Vec<String> = Vec::new();
-    // First, normalize whitespace: collapse runs of spaces/tabs to a
-    // single space. We want clean word boundaries, not the exact
-    // original layout.
     let normalized: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if normalized.is_empty() {
         return vec![String::new()];
@@ -260,11 +562,9 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
         }
         let word_len = word.chars().count();
         if word_len > max_width {
-            // Flush whatever we have so far.
             if !current.is_empty() {
                 out.push(std::mem::take(&mut current));
             }
-            // Truncate the long word, appending `…`.
             let truncated: String = word.chars().take(max_width.saturating_sub(1)).collect();
             out.push(format!("{truncated}…"));
             continue;
@@ -285,445 +585,23 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
     out
 }
 
-/// Build the top/bottom borders and the side character for a
-/// finding box, all colored per severity. The side is reused for
-/// every body row, so we pre-compute it once and pass it down.
-fn severity_border(
-    sev: Severity,
-    width: usize,
-    pad: usize,
-    sev_label: &str,
-) -> (String, String, String) {
-    // Pick a single color for the entire border. CRITICAL/HIGH
-    // share red (the convention: red = urgent, yellow = caution,
-    // cyan = info).
-    let border_colored = |s: &str| -> String {
-        if !tty::interactive() {
-            return s.to_string();
-        }
-        match sev {
-            Severity::Critical => s.bright_red(),
-            Severity::High => s.red(),
-            Severity::Medium => s.yellow(),
-            Severity::Low => s.cyan(),
-            Severity::Info => s.cyan(),
-        }
-        .to_string()
-    };
-    let h = border_colored("─");
-    // `pad` is the *display* width of the leading dashes (in
-    // characters). Because the colored crate wraps each `─` in
-    // ANSI codes, the underlying string is longer than `pad`
-    // chars. We need exactly `pad` rendered `─`s on the left.
-    let top = format!(
-        "╭{}{}{}╮",
-        (0..pad).map(|_| h.clone()).collect::<String>(),
-        severity_color(sev, sev_label),
-        (0..1).map(|_| h.clone()).collect::<String>()
-    );
-    let bottom = format!(
-        "╰{}╯",
-        (0..(width - 2)).map(|_| h.clone()).collect::<String>()
-    );
-    let side = border_colored("│");
-    (top, bottom, side)
-}
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// `sentinel rules` — cargo-style table (no box drawing).
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/// Color the rule name cyan-ish so it stands out from the dim labels
-/// but doesn't fight the severity color on the top border.
-fn rule_name_color(rule: &str) -> String {
-    rule.cyan().to_string()
-}
-
-fn severity_color(sev: Severity, s: &str) -> String {
-    if !tty::interactive() {
-        return s.to_string();
-    }
-    match sev {
-        Severity::Critical => s.bright_red().bold().to_string(),
-        Severity::High => s.red().bold().to_string(),
-        Severity::Medium => s.yellow().bold().to_string(),
-        Severity::Low => s.cyan().bold().to_string(),
-        Severity::Info => s.white().dimmed().to_string(),
-    }
-}
-
-fn severity_summary_color(sev: Severity, s: &str) -> String {
-    if !tty::interactive() {
-        return s.to_string();
-    }
-    match sev {
-        Severity::Critical => s.bright_red().bold().to_string(),
-        Severity::High => s.red().bold().to_string(),
-        Severity::Medium => s.yellow().bold().to_string(),
-        Severity::Low => s.cyan().bold().to_string(),
-        Severity::Info => s.white().dimmed().to_string(),
-    }
-}
-
-/// Print all findings, with a brief per-finding delay between them
-/// when interactive. Returns the formatted text for callers that want
-/// to capture it (e.g. tests).
-pub fn format_findings(findings: &[Finding]) -> String {
-    if findings.is_empty() {
-        let text = "✔ no findings".to_string();
-        if tty::interactive() {
-            println!("{}", text.green());
-        } else {
-            println!("{text}");
-        }
-        return text;
-    }
-    let mut out = Vec::new();
-    for (i, f) in findings.iter().enumerate() {
-        let block = format_finding(f);
-        if tty::interactive()
-            && findings.len() <= 20
-            && std::env::var("CI").ok().as_deref() != Some("true")
-        {
-            // Reveal animation: print the block, then pause briefly so
-            // the user can read each one. 35ms is short enough to feel
-            // snappy on 5–10 findings and long enough to register
-            // visually on a fast screen.
-            print!("{block}");
-            let _ = std::io::stdout().flush();
-            std::thread::sleep(Duration::from_millis(35));
-            if i + 1 < findings.len() {
-                println!();
-            }
-        } else {
-            // Piped / CI / too many findings: print the whole batch
-            // up front. We push into `out` and let the caller print
-            // once at the end so the test snapshot stays byte-stable.
-            out.push(block);
-        }
-    }
-    if !out.is_empty() {
-        let joined = out.join("\n\n");
-        println!("{joined}");
-    }
-    // Always return a plain version for tests / programmatic callers.
-    let plain: Vec<String> = findings.iter().map(format_finding).collect();
-    plain.join("\n")
-}
-
-/// Print the summary footer with the animated progress bars.
-/// Honors `tty::interactive()` and `CI` to skip animation.
-pub fn print_summary_footer(findings: &[Finding], elapsed: Duration) {
-    let total = findings.len();
-    let rule_count = crate::engine::registry::list_rule_ids().len();
-
-    if total == 0 {
-        let line = format!(
-            " ✓  No issues found  ·  scanned in {:.2}s  ·  {} rules  ·  clean",
-            elapsed.as_secs_f64(),
-            rule_count
-        );
-        let line = if tty::interactive() {
-            line.bright_green().bold().to_string()
-        } else {
-            line
-        };
-        print_rule(BOX_WIDTH, &line);
-        return;
-    }
-
-    // Per-severity counts (Critical → Info).
-    let mut counts = [0usize; 5];
-    for f in findings {
-        match f.severity {
-            Severity::Info => counts[0] += 1,
-            Severity::Low => counts[1] += 1,
-            Severity::Medium => counts[2] += 1,
-            Severity::High => counts[3] += 1,
-            Severity::Critical => counts[4] += 1,
-        }
-    }
-    // Render order: CRITICAL first, then HIGH, MEDIUM, LOW. The
-    // array below is the source of truth for both iteration and
-    // label rendering.
-    let order = [
-        (Severity::Critical, counts[4], "CRITICAL"),
-        (Severity::High, counts[3], "HIGH"),
-        (Severity::Medium, counts[2], "MEDIUM"),
-        (Severity::Low, counts[1], "LOW"),
-    ];
-
-    let warning = format!(
-        " ⚠  {} issues found  ·  scanned in {:.2}s",
-        total,
-        elapsed.as_secs_f64()
-    );
-    print_rule(BOX_WIDTH, &warning);
-
-    for (sev, n, label) in order {
-        if n == 0 {
-            // Show zero-count rows dimmed, so the user sees the full
-            // severity spread even when no findings of a given level.
-            let (filled, empty) = render_bar(0, total, sev);
-            let pct = 0;
-            // Fixed 110-char row: ` {label:<11} {n:>4}  {bar}  ({pct:>3}%)`.
-            // Visible math: 1 + 11 + 1 + 4 + 2 + 70 + 2 + 6 = 97. Pad
-            // with trailing spaces to hit 110.
-            let plain = format!(
-                " {:<11} {:>4}  {}{}  ({:>3}%)",
-                label, n, filled, empty, pct
-            );
-            let row = if tty::interactive() {
-                // Severity-color the label, bold the count (here
-                // always 0), dim the rest of the row. The bar
-                // segments are already pre-colored by `render_bar`.
-                let head = format!(
-                    " {}{} {:>4}  ",
-                    severity_summary_color(sev, label).bold(),
-                    " ".dimmed(),
-                    n,
-                );
-                format!("{head}{}{}  ({:>3}%)", filled, empty, pct)
-            } else {
-                plain
-            };
-            println!("{row}");
-            continue;
-        }
-        let pct = n
-            .checked_mul(100)
-            .and_then(|x| x.checked_div(total))
-            .unwrap_or(0);
-        // Build the row in two halves: the labeled side (severity
-        // + count) and the bar (per-severity filled + dimmed empty).
-        // The bar segments are already pre-colored by render_bar,
-        // so we just concatenate.
-        let (filled, empty) = render_bar(n, total, sev);
-        // `row_label` is the static prefix that the animation
-        // re-prints before each bar frame. The full row is built
-        // below in the per-TTY path; the static path mirrors the
-        // plain text format so piped output is byte-stable.
-        let row_label = if tty::interactive() {
-            format!(
-                " {}{} {:>4}  ",
-                severity_summary_color(sev, label).bold(),
-                " ".dimmed(),
-                n,
-            )
-        } else {
-            format!(" {:<11} {:>4}  ", label, n)
-        };
-        let row = format!("{row_label}{}{}  ({:>3}%)", filled, empty, pct);
-        // Animated fill when interactive and not in CI.
-        if tty::interactive() && std::env::var("CI").ok().as_deref() != Some("true") && total > 0 {
-            // The animated frames re-render the bar with the
-            // severity-colored filled portion and dimmed `·` empty
-            // portion in place via `\r\x1b[2K`. The helper's
-            // final frame is the clean filled bar — no extra
-            // re-print, no double render.
-            print_animated_bar(&row_label, &filled, total, n, sev, &ColoredString::from(""));
-        } else {
-            println!("{row}");
-        }
-    }
-    println!();
-    let tip1 = "→ Run with --format sarif to upload to GitHub Code Scanning.";
-    let tip2 = "→ Run with --ignore <rule> to suppress a specific rule.";
-    if tty::interactive() {
-        println!("{}", tip1.dimmed());
-        println!("{}", tip2.dimmed());
-    } else {
-        println!("{tip1}");
-        println!("{tip2}");
-    }
-    print_rule(BOX_WIDTH, "");
-}
-
-/// Returns the `(filled, unfilled)` segments of a 70-char bar with
-/// per-severity coloring on the filled portion and a dimmed
-/// (always-gray) unfilled portion. The two segments are returned
-/// as a tuple so the caller can `format!` them into the row
-/// without losing the per-segment ANSI sequences.
-///
-/// `n` is the count, `total` is the total finding count.
-/// `sev` is the row's severity; we use it only for the filled color.
-/// `interactive` gates the colored crate — when piped or CI, the
-/// segments come back as plain strings.
-fn render_bar(n: usize, total: usize, sev: Severity) -> (String, String) {
-    // 70-char bar — sized to fill the same horizontal space as the
-    // finding boxes (110 chars minus a 11-char label, 4-char count, and
-    // separators). Filled portion uses block elements (█) for a
-    // visually solid look. The unfilled portion uses middle dots
-    // (·, U+00B7) — they render cleanly in every monospace font
-    // including the default macOS Terminal font, unlike the light
-    // shade (░) which can look pixelated on some setups.
-    const WIDTH: usize = 70;
-    let filled = n
-        .checked_mul(WIDTH)
-        .and_then(|x| x.checked_div(total))
-        .unwrap_or(0);
-
-    // Build the two raw segments first.
-    let raw_filled = "█".repeat(filled);
-    let raw_empty = "·".repeat(WIDTH - filled);
-
-    if tty::interactive() {
-        // Per-severity color for the filled portion. The unfilled
-        // portion is always dimmed so it reads as "background"
-        // against the severity-colored fill.
-        let colored_filled = match sev {
-            Severity::Critical => raw_filled.bright_red(),
-            Severity::High => raw_filled.red(),
-            Severity::Medium => raw_filled.yellow(),
-            Severity::Low => raw_filled.cyan(),
-            Severity::Info => raw_filled.white(),
-        };
-        (colored_filled.to_string(), raw_empty.dimmed().to_string())
-    } else {
-        (raw_filled, raw_empty)
-    }
-}
-
-fn print_animated_bar(
-    label: &str,
-    _bar_unused: &str,
-    total: usize,
-    n: usize,
-    sev: Severity,
-    _final_colored_unused: &ColoredString,
-) {
-    // The bar fills left-to-right at 25ms/char. The filled portion
-    // is rendered in the row's severity color (red for CRITICAL,
-    // yellow for MEDIUM, etc.), the unfilled portion is always
-    // dimmed. A bright `▓` shimmer head races 1 cell ahead of
-    // the fill to give the animation a sense of motion.
-    //
-    // Every frame is written in place via `\r\x1b[2K` (carriage
-    // return + clear-line) so the user sees a single line that
-    // fills up smoothly, not a stack of growing rows. The last
-    // iteration is the clean final state (no shimmer) so we
-    // never print the bar twice.
-    const WIDTH: usize = 70;
-    let pct = n
-        .checked_mul(100)
-        .and_then(|x| x.checked_div(total))
-        .unwrap_or(0);
-    // Per-severity color function, applied to the filled segment
-    // of every frame.
-    let color_for = |s: &str| -> String {
-        if !tty::interactive() {
-            return s.to_string();
-        }
-        match sev {
-            Severity::Critical => s.bright_red(),
-            Severity::High => s.red(),
-            Severity::Medium => s.yellow(),
-            Severity::Low => s.cyan(),
-            Severity::Info => s.white(),
-        }
-        .to_string()
-    };
-    for i in 0..=WIDTH {
-        let filled = n
-            .checked_mul(i)
-            .and_then(|x| x.checked_div(WIDTH.max(1)))
-            .unwrap_or(0);
-        // The leading edge of the bar: a brighter "shimmer" block.
-        // Renders 1 char ahead of the filled portion (clamped at
-        // the bar's right edge) so the head visibly leads the
-        // fill. On the final iteration (`i == WIDTH`) we suppress
-        // the shimmer so the last frame is the clean filled bar.
-        let show_shimmer = i < WIDTH;
-        let shimmer = if filled < WIDTH { filled } else { WIDTH - 1 };
-        let mut bar = String::with_capacity(WIDTH * 3);
-        for j in 0..WIDTH {
-            let cell = if j < filled {
-                color_for("█")
-            } else if show_shimmer && j == shimmer && tty::interactive() {
-                // Bright white shimmer head — overrides the severity
-                // color so it stands out as a moving highlight.
-                "▓".bright_white().to_string()
-            } else {
-                "·".dimmed().to_string()
-            };
-            bar.push_str(&cell);
-        }
-        let row = format!("{}{}  ({}%)", label, bar, pct);
-        // Write to STDOUT (not stderr) so the bar lives on the
-        // same stream as the rest of the summary footer — that
-        // way the test snapshots and CI logs see one row, not
-        // an interleaved pair. `\r` returns the cursor to col 0
-        // of the same line; `\x1b[2K` clears the rest of the
-        // line so leftover chars from the previous frame are
-        // wiped (e.g. when a frame is shorter than the
-        // previous one — the `…` count drops as `i` increases).
-        // Per-frame sleep is 8ms — small enough that the full
-        // 71-frame sweep over the 70-char bar finishes in well
-        // under 600ms total, but long enough to read as motion.
-        print!("\r\x1b[2K{row}");
-        let _ = std::io::stdout().flush();
-        std::thread::sleep(Duration::from_millis(8));
-    }
-    // Advance past the bar line so the next severity (or the
-    // trailing tips) starts on a fresh row. ONE newline — the
-    // last loop frame is already the clean final state, so we
-    // never re-print the row.
-    println!();
-}
-
-/// Helper that returns a `ColoredString` for a given severity.
-/// Reserved for future use — the animated bar no longer needs it
-/// because the last loop frame is now the clean final state.
-#[allow(dead_code)]
-fn severity_color_to_colored(sev: Severity, s: &str) -> ColoredString {
-    if !tty::interactive() {
-        return ColoredString::from(s);
-    }
-    match sev {
-        Severity::Critical => s.bright_red().bold(),
-        Severity::High => s.red().bold(),
-        Severity::Medium => s.yellow().bold(),
-        Severity::Low => s.cyan().bold(),
-        Severity::Info => s.white().dimmed(),
-    }
-}
-
-fn print_rule(width: usize, line: &str) {
-    if line.is_empty() {
-        let bar = "━".repeat(width);
-        let bar = if tty::interactive() {
-            bar.dimmed().to_string()
-        } else {
-            bar
-        };
-        println!("{bar}");
-    } else {
-        let bar = "━".repeat(width);
-        let bar = if tty::interactive() {
-            bar.dimmed().to_string()
-        } else {
-            bar
-        };
-        let line = if tty::interactive() {
-            line.yellow().to_string()
-        } else {
-            line.to_string()
-        };
-        println!("{bar}");
-        println!("{line}");
-        println!("{bar}");
-    }
-}
-
-/// Print the `sentinel rules` table. Renders a polished table with
-/// the rule id, severity (colored), and source layer (IDL, AST, or
-/// IDL+AST) read from each rule's `layer()` method.
+/// Print the `sentinel rules` listing in cargo style: a header line
+/// with the brand + count, a blank line, and an aligned table of
+/// rows. No `┌─┬─┐` borders. The `Layer` field comes from the
+/// `Rule` trait (added in the previous commit) so this table reads
+/// the layer info from the source of truth, not a parallel string
+/// map.
 pub fn print_rules_table() {
-    // Use the rule instances so we can call `r.layer()` directly —
-    // the table reads layer info from the source of truth (the rule
-    // file) rather than from a parallel string map.
     let rules = crate::engine::registry::all_rules();
-    let header = "⚓ anchor-sentinel";
+    let header = "⚓ Anchor Sentinel";
     if tty::interactive() {
         println!(
             "{} {} {}",
-            header.bright_white().bold(),
+            header.bright_cyan().bold(),
             "—".dimmed(),
             format!("{} rules active", rules.len()).dimmed()
         );
@@ -732,79 +610,35 @@ pub fn print_rules_table() {
     }
     println!();
 
-    // Fixed column widths so the right border lines up regardless
-    // of rule id length. Each cell gets +2 chars of inner padding
-    // (one space on each side of the content) via the `┌─┬─┐` etc.
-    // table characters.
-    //   1 (outer │) + (5+2) (#) + 1 (│) + (45+2) (Rule) + 1 (│)
-    //   + (12+2) (Sev) + 1 (│) + (10+2) (Layer) + 1 (outer │) = 85 chars.
-    const NUM_W: usize = 5;
-    const NAME_W: usize = 45;
-    const SEV_W: usize = 12;
-    const LAYER_W: usize = 10;
+    // Cargo-style columns: `ID RULE SEVERITY LAYER`. No `│` separators.
+    // Column widths picked to accommodate the longest rule id
+    // ("missing_bump_seed_canonicalization" = 33 chars).
+    const ID_W: usize = 3;
+    const NAME_W: usize = 38;
+    const SEV_W: usize = 10;
+    const LAYER_W: usize = 8;
 
-    let line_top = format!(
-        "┌{}┬{}┬{}┬{}┐",
-        "─".repeat(NUM_W + 2),
-        "─".repeat(NAME_W + 2),
-        "─".repeat(SEV_W + 2),
-        "─".repeat(LAYER_W + 2),
-    );
-    let line_mid = format!(
-        "├{}┼{}┼{}┼{}┤",
-        "─".repeat(NUM_W + 2),
-        "─".repeat(NAME_W + 2),
-        "─".repeat(SEV_W + 2),
-        "─".repeat(LAYER_W + 2),
-    );
-    let line_bot = format!(
-        "└{}┴{}┴{}┴{}┘",
-        "─".repeat(NUM_W + 2),
-        "─".repeat(NAME_W + 2),
-        "─".repeat(SEV_W + 2),
-        "─".repeat(LAYER_W + 2),
-    );
-
-    let border = if tty::interactive() {
-        line_top.cyan().bold().to_string()
+    if tty::interactive() {
+        println!(
+            "{:<ID_W$}  {:<NAME_W$}  {:<SEV_W$}  {:<LAYER_W$}",
+            "ID", "Rule", "Severity", "Layer"
+        );
     } else {
-        line_top
-    };
-    let mid = if tty::interactive() {
-        line_mid.cyan().dimmed().to_string()
-    } else {
-        line_mid
-    };
-    let bot = if tty::interactive() {
-        line_bot.cyan().bold().to_string()
-    } else {
-        line_bot
-    };
-
-    println!("{border}");
-    println!(
-        "│ {:>w1$} │ {:<w2$} │ {:<w3$} │ {:<w4$} │",
-        "#",
-        "Rule",
-        "Severity",
-        "Layer",
-        w1 = NUM_W,
-        w2 = NAME_W,
-        w3 = SEV_W,
-        w4 = LAYER_W,
-    );
-    println!("{mid}");
+        println!(
+            "{:<ID_W$}  {:<NAME_W$}  {:<SEV_W$}  {:<LAYER_W$}",
+            "ID", "Rule", "Severity", "Layer"
+        );
+    }
 
     // Sort by severity (Critical first) then by id alphabetically.
     let mut sorted = rules;
     sorted.sort_by(|a, b| {
-        // Critical=4, High=3, ... Info=0. Reverse: higher severity first.
         let ord = |s: &Severity| match s {
-            Severity::Critical => 4,
-            Severity::High => 3,
-            Severity::Medium => 2,
-            Severity::Low => 1,
-            Severity::Info => 0,
+            Severity::Critical => 5,
+            Severity::High => 4,
+            Severity::Medium => 3,
+            Severity::Low => 2,
+            Severity::Info => 1,
         };
         ord(&b.severity())
             .cmp(&ord(&a.severity()))
@@ -817,19 +651,15 @@ pub fn print_rules_table() {
         let layer = rule.layer();
         let sev_label = sev.as_str().to_uppercase();
         let sev_str = if tty::interactive() {
-            severity_summary_color(sev, &sev_label)
+            sev_label.color(severity_color(sev)).bold().to_string()
         } else {
             sev_label
         };
-        // Layer comes from the rule itself, not a string map.
-        let layer_str: String = if tty::interactive() {
+        let layer_str = if tty::interactive() {
             layer.to_string().dimmed().to_string()
         } else {
             layer.to_string()
         };
-        // Truncate id if it somehow exceeds NAME_W (longest current
-        // id is "missing_bump_seed_canonicalization" at 33 chars,
-        // well under 45 — defensive only).
         let id_display: String = if id.chars().count() > NAME_W {
             let truncated: String = id.chars().take(NAME_W - 1).collect();
             format!("{truncated}…")
@@ -837,16 +667,108 @@ pub fn print_rules_table() {
             id.to_string()
         };
         println!(
-            "│ {:>w1$} │ {:<w2$} │ {:<w3$} │ {:<w4$} │",
-            format!("{}", i + 1),
-            id_display,
-            sev_str,
-            layer_str,
-            w1 = NUM_W,
-            w2 = NAME_W,
-            w3 = SEV_W,
-            w4 = LAYER_W,
+            "{n:<ID_W$}  {id_display:<NAME_W$}  {sev_str:<SEV_W$}  {layer_str:<LAYER_W$}",
+            n = i + 1,
         );
     }
-    println!("{bot}");
+    println!();
+}
+
+// `Layer` is imported but only used via `Display`; suppress the
+// unused-import warning the compiler would otherwise emit.
+#[allow(dead_code)]
+fn _layer_marker(_: Layer) {}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Unit tests
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+#[cfg(test)]
+mod tests {
+    use super::risk;
+
+    #[test]
+    fn score_zero_findings_is_100() {
+        assert_eq!(risk::score(0, 0, 0, 0), 100);
+    }
+
+    #[test]
+    fn score_one_critical_is_75() {
+        assert_eq!(risk::score(1, 0, 0, 0), 75);
+    }
+
+    #[test]
+    fn score_two_crit_three_high_two_medium_is_20() {
+        // (2*25) + (3*8) + (2*3) = 50 + 24 + 6 = 80 → 100 - 80 = 20.
+        assert_eq!(risk::score(2, 3, 2, 0), 20);
+    }
+
+    #[test]
+    fn score_floors_at_zero() {
+        // 4 critical saturates the penalty past 100; score clamps.
+        assert_eq!(risk::score(5, 10, 5, 0), 0);
+    }
+
+    #[test]
+    fn grade_boundaries() {
+        assert_eq!(risk::grade(100), "A");
+        assert_eq!(risk::grade(90), "A");
+        assert_eq!(risk::grade(89), "B");
+        assert_eq!(risk::grade(75), "B");
+        assert_eq!(risk::grade(74), "C");
+        assert_eq!(risk::grade(50), "C");
+        assert_eq!(risk::grade(49), "D");
+        assert_eq!(risk::grade(25), "D");
+        assert_eq!(risk::grade(24), "F");
+        assert_eq!(risk::grade(0), "F");
+    }
+
+    #[test]
+    fn critical_always_blocks_even_at_high_score() {
+        // 1 critical with no others: penalty 25, score 75.
+        // Verdict must still be Blocked (override).
+        let (v, label) = risk::verdict(1, 0, 0, 0);
+        assert_eq!(v, risk::Verdict::Blocked);
+        assert_eq!(label, "DEPLOYMENT BLOCKED");
+    }
+
+    #[test]
+    fn critical_override_survives_zero_penalty_other() {
+        // 3 critical, 0 of everything else: penalty 75, score 25.
+        // Without override this would be DEPLOYMENT BLOCKED anyway,
+        // but we test the override path explicitly.
+        let (v, _) = risk::verdict(3, 0, 0, 0);
+        assert_eq!(v, risk::Verdict::Blocked);
+    }
+
+    #[test]
+    fn high_only_at_89_is_review_required() {
+        // Penalty for 11 high: 11*8 = 88 → score 12. Verdict is
+        // blocked, not review. So at the 50-89 boundary, what
+        // produces a review? 1 crit=75 (blocked), 0 crit + 6 high=52
+        // (review). 6 high × 8 = 48 → 100-48 = 52.
+        let (v, label) = risk::verdict(0, 6, 0, 0);
+        assert_eq!(v, risk::Verdict::ReviewRequired);
+        assert_eq!(label, "DEPLOYMENT REVIEW REQUIRED");
+    }
+
+    #[test]
+    fn no_critical_high_or_above_means_approved() {
+        // 0 critical, 0 high, 1 medium, 1 low: penalty 4 → 96 → A → Approved.
+        let (v, label) = risk::verdict(0, 0, 1, 1);
+        assert_eq!(v, risk::Verdict::Approved);
+        assert_eq!(label, "DEPLOYMENT APPROVED");
+    }
+
+    #[test]
+    fn follow_up_critical_singular_vs_plural() {
+        assert_eq!(
+            risk::follow_up(1, 0, 0, 0),
+            "1 Critical finding must be resolved before deployment."
+        );
+        assert_eq!(
+            risk::follow_up(3, 0, 0, 0),
+            "3 Critical findings must be resolved before deployment."
+        );
+    }
 }

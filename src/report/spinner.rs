@@ -13,6 +13,13 @@
 //! ... do slow work ...
 //! spinner.finish();
 //! ```
+//!
+//! As of the v0.4.x CLI redesign, `main.rs` no longer spins while
+//! the scan runs — the Pipeline section (printed after the scan
+//! completes) is the user-facing status indicator. The spinner
+//! types and helpers below are kept dormant for future use (e.g.,
+//! a `--watch` mode that re-runs the scan on file changes).
+#![allow(dead_code)]
 
 use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, Ordering};

@@ -34,26 +34,34 @@ pub fn print_header(project: &str, rule_count: usize) {
         let top = format!("╭{}╮", "─".repeat(inner));
         let bot = format!("╰{}╯", "─".repeat(inner));
         println!("{}", bright(&top));
-        println!(
-            "{}",
-            bright(&format!(
-                "│ {} {:<60} │",
-                bright("⚓"),
-                format!(
-                    "{} {}",
-                    white("anchor-sentinel"),
-                    dim(&format!("v{}", env!("CARGO_PKG_VERSION")))
-                )
-            ))
+        // Build the brand line at the actual content width, with
+        // a single space of padding on either side of the box's `│`.
+        // The previous version hardcoded `:<60}` which over-padded
+        // for short versions and under-padded (overflowed the right
+        // border) for long ones.
+        let brand = format!(
+            "{} {} {}",
+            bright("⚓"),
+            white("anchor-sentinel"),
+            dim(&format!("v{}", env!("CARGO_PKG_VERSION")))
         );
-        println!(
-            "{}",
-            bright(&format!(
-                "│ {:<width$} │",
-                "Solana smart contract security analyzer",
-                width = inner - 2
-            ))
-        );
+        let brand_pad = inner.saturating_sub(brand.chars().count() + 2);
+        let brand_line = if brand_pad > 0 {
+            format!("│ {brand}{} │", " ".repeat(brand_pad))
+        } else {
+            // Brand string is too long for the box — fall back to a
+            // hard wrap on the right border (still pretty).
+            format!("│ {brand} │")
+        };
+        println!("{}", bright(&brand_line));
+        let tagline = "Solana smart contract security analyzer";
+        let tagline_pad = inner.saturating_sub(tagline.chars().count() + 2);
+        let tagline_line = if tagline_pad > 0 {
+            format!("│ {tagline}{} │", " ".repeat(tagline_pad))
+        } else {
+            format!("│ {tagline} │")
+        };
+        println!("{}", bright(&tagline_line));
         println!("{}", bright(&bot));
     } else {
         // Plain text: still include the info, just without the box.

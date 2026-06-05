@@ -16,6 +16,7 @@ pub mod missing_bump_seed_canonicalization;
 pub mod missing_close_authority;
 pub mod missing_mut;
 pub mod missing_ownership;
+pub mod missing_reinit_guard;
 pub mod missing_signer;
 pub mod pda_misconfig;
 pub mod unchecked_balance_flow;
@@ -62,6 +63,9 @@ inventory::submit! {
 }
 inventory::submit! {
     RuleFactory { build: || Arc::new(cpi_signer_seed_validation::CpiSignerSeedValidation) as Arc<dyn Rule> }
+}
+inventory::submit! {
+    RuleFactory { build: || Arc::new(missing_reinit_guard::MissingReinitGuard) as Arc<dyn Rule> }
 }
 
 /// Rule metadata without instantiation — used by SARIF output and

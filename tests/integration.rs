@@ -130,7 +130,85 @@ fn rules_subcommand_lists_all_rules() {
         .stdout(predicate::str::contains("duplicate_mutable_accounts"))
         .stdout(predicate::str::contains("integer_cast_truncation"))
         .stdout(predicate::str::contains("missing_close_authority"))
-        .stdout(predicate::str::contains("cpi_signer_seed_validation"));
+        .stdout(predicate::str::contains("cpi_signer_seed_validation"))
+        .stdout(predicate::str::contains("missing_reinit_guard"));
+}
+
+#[test]
+fn reinit_vulnerable_triggers_missing_reinit_guard() {
+    // The reinit-vulnerable fixture has three handlers that all use
+    // `init_if_needed` with no `has_one` and no `constraint`. The rule
+    // should fire once per (struct, field) — three findings total, all
+    // pointing at the `state` field.
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/reinit-vulnerable");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let reinit_findings: Vec<_> = arr
+        .iter()
+        .filter(|f| f["rule"] == "missing_reinit_guard")
+        .collect();
+    assert_eq!(
+        reinit_findings.len(),
+        3,
+        "expected 3 missing_reinit_guard findings, got {}: {}",
+        reinit_findings.len(),
+        serde_json::to_string_pretty(&reinit_findings).unwrap()
+    );
+    for f in &reinit_findings {
+        assert_eq!(
+            f["account"], "state",
+            "expected account=state on every finding, got: {f}"
+        );
+        assert_eq!(
+            f["severity"], "high",
+            "expected high severity, got: {f}"
+        );
+        assert!(
+            f["message"]
+                .as_str()
+                .unwrap()
+                .contains("init_if_needed"),
+            "expected message to mention init_if_needed, got: {}",
+            f["message"]
+        );
+        assert!(
+            f["hint"]
+                .as_str()
+                .unwrap()
+                .contains("constraint ="),
+            "expected hint to recommend a `constraint =` expression, got: {}",
+            f["hint"]
+        );
+    }
+}
+
+#[test]
+fn reinit_clean_has_no_missing_reinit_guard() {
+    // The reinit-clean fixture uses `init_if_needed` with two safe
+    // patterns: `has_one = authority` and `constraint = state.owner ==
+    // user.key() @ …`. Neither should trigger the rule.
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/reinit-clean");
+    let output = sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("scan ran");
+    assert!(output.status.success(), "scan should succeed");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    let has = arr.iter().any(|f| f["rule"] == "missing_reinit_guard");
+    assert!(
+        !has,
+        "expected no missing_reinit_guard findings on reinit-clean, got:\n{stdout}"
+    );
 }
 
 #[test]

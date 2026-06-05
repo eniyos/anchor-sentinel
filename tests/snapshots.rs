@@ -68,6 +68,15 @@ fn snapshot_balance_drain_vulnerable() {
     insta::assert_json_snapshot!("balance_drain_vulnerable", stripped);
 }
 
+#[test]
+fn snapshot_reinit_vulnerable_findings() {
+    // Locks the shape of the missing_reinit_guard findings on the
+    // vulnerable fixture: three findings, all `state`, severity `high`.
+    let v = run_scan_json(&fixture("reinit-vulnerable"));
+    let stripped = strip_absolute_paths(v);
+    insta::assert_json_snapshot!("reinit_vulnerable", stripped);
+}
+
 fn run_scan_sarif(path: &str) -> serde_json::Value {
     let output = sentinel()
         .args(["scan", path, "--format", "sarif"])

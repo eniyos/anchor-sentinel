@@ -14,7 +14,7 @@
 //!   - [`engine`]: the `Rule` trait, `AnalysisContext`, `Finding`, severity.
 //!   - [`idl`]: IDL parser producing the unified `ProgramIr`.
 //!   - [`report`]: text / JSON / SARIF report generators.
-//!   - [`rules`]: the 13 built-in security rules.
+//!   - [`rules`]: the 14 built-in security rules.
 //!   - [`wasm`]: `#[wasm_bindgen]` entrypoint (compiled when targeting
 //!     `wasm32-unknown-unknown`).
 

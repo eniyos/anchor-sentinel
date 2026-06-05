@@ -384,6 +384,16 @@ expression: stripped
               }
             },
             {
+              "id": "missing_reinit_guard",
+              "name": "missing_reinit_guard",
+              "properties": {
+                "security-severity": 8.0
+              },
+              "shortDescription": {
+                "text": "Detects init_if_needed accounts without a reinitialization guard"
+              }
+            },
+            {
               "id": "missing_signer",
               "name": "missing_signer",
               "properties": {

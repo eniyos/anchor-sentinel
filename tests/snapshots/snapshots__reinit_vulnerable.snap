@@ -1,0 +1,52 @@
+---
+source: tests/snapshots.rs
+expression: stripped
+---
+{
+  "findings": [
+    {
+      "account": "state",
+      "column": 4,
+      "file": "programs/reinit_vault/src/lib.rs",
+      "hint": "Add `constraint = <account>.<authority_field> == <signer>.key() @ ErrorCode::AlreadyInitialized` (or `has_one = <authority>` where `<authority>` is a Signer) to prevent reinitialization by a different caller.",
+      "instruction": null,
+      "line": 46,
+      "message": "Account `state` uses init_if_needed without a reinitialization guard — an attacker can reinitialize this account and overwrite its state.",
+      "program": "reinit_vault",
+      "rule": "missing_reinit_guard",
+      "severity": "high"
+    },
+    {
+      "account": "state",
+      "column": 4,
+      "file": "programs/reinit_vault/src/lib.rs",
+      "hint": "Add `constraint = <account>.<authority_field> == <signer>.key() @ ErrorCode::AlreadyInitialized` (or `has_one = <authority>` where `<authority>` is a Signer) to prevent reinitialization by a different caller.",
+      "instruction": null,
+      "line": 55,
+      "message": "Account `state` uses init_if_needed without a reinitialization guard — an attacker can reinitialize this account and overwrite its state.",
+      "program": "reinit_vault",
+      "rule": "missing_reinit_guard",
+      "severity": "high"
+    },
+    {
+      "account": "state",
+      "column": 4,
+      "file": "programs/reinit_vault/src/lib.rs",
+      "hint": "Add `constraint = <account>.<authority_field> == <signer>.key() @ ErrorCode::AlreadyInitialized` (or `has_one = <authority>` where `<authority>` is a Signer) to prevent reinitialization by a different caller.",
+      "instruction": null,
+      "line": 70,
+      "message": "Account `state` uses init_if_needed without a reinitialization guard — an attacker can reinitialize this account and overwrite its state.",
+      "program": "reinit_vault",
+      "rule": "missing_reinit_guard",
+      "severity": "high"
+    }
+  ],
+  "summary": {
+    "critical": 0,
+    "high": 3,
+    "info": 0,
+    "low": 0,
+    "medium": 0,
+    "total": 3
+  }
+}

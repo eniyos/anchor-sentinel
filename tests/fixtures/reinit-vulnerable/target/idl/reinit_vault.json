@@ -1,0 +1,56 @@
+{
+  "version": "0.30.0",
+  "name": "reinit_vault",
+  "instructions": [
+    {
+      "name": "init_no_guard",
+      "accounts": [
+        { "name": "user",          "writable": true,  "signer": true  },
+        { "name": "state",         "writable": true,  "signer": false },
+        { "name": "system_program","writable": false, "signer": false }
+      ],
+      "args": [],
+      "discriminator": [1, 2, 3, 4, 5, 6, 7, 8]
+    },
+    {
+      "name": "init_pda_no_guard",
+      "accounts": [
+        { "name": "user",          "writable": true,  "signer": true  },
+        { "name": "state",         "writable": true,  "signer": false },
+        { "name": "system_program","writable": false, "signer": false }
+      ],
+      "args": [],
+      "discriminator": [9, 10, 11, 12, 13, 14, 15, 16]
+    },
+    {
+      "name": "init_mutable_no_guard",
+      "accounts": [
+        { "name": "user",          "writable": true,  "signer": true  },
+        { "name": "state",         "writable": true,  "signer": false },
+        { "name": "system_program","writable": false, "signer": false }
+      ],
+      "args": [],
+      "discriminator": [17, 18, 19, 20, 21, 22, 23, 24]
+    }
+  ],
+  "accounts": [
+    { "name": "State", "discriminator": [200, 201, 202, 203, 204, 205, 206, 207] }
+  ],
+  "types": [
+    {
+      "name": "State",
+      "kind": "struct",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "owner", "type": "pubkey" },
+          { "name": "value", "type": "u64"    }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": [
+    { "code": 6000, "name": "AlreadyInitialized", "msg": "account already initialized" }
+  ]
+}

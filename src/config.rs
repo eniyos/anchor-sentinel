@@ -65,9 +65,7 @@ impl Config {
                 let value = line[eq_pos + 1..].trim();
 
                 // Remove quotes from values
-                let value = value
-                    .trim_matches('"')
-                    .trim_matches('\'');
+                let value = value.trim_matches('"').trim_matches('\'');
 
                 match key {
                     "exclude" => {
@@ -178,7 +176,10 @@ mod tests {
     fn test_exact_match() {
         let path = PathBuf::from("programs/test/src/lib.rs");
         assert!(is_excluded(&path, &["programs/test".to_string()]));
-        assert!(is_excluded(&path, &["programs/test/src/lib.rs".to_string()]));
+        assert!(is_excluded(
+            &path,
+            &["programs/test/src/lib.rs".to_string()]
+        ));
         assert!(!is_excluded(&path, &["programs/other".to_string()]));
     }
 

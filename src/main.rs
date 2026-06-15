@@ -95,14 +95,16 @@ fn cmd_scan(
 
     // Apply min_severity from config if not set via CLI
     let effective_min_severity = min_severity.or_else(|| {
-        cfg.min_severity.as_ref().and_then(|s| match s.to_lowercase().as_str() {
-            "info" => Some(cli::MinSeverity::Info),
-            "low" => Some(cli::MinSeverity::Low),
-            "medium" => Some(cli::MinSeverity::Medium),
-            "high" => Some(cli::MinSeverity::High),
-            "critical" => Some(cli::MinSeverity::Critical),
-            _ => None,
-        })
+        cfg.min_severity
+            .as_ref()
+            .and_then(|s| match s.to_lowercase().as_str() {
+                "info" => Some(cli::MinSeverity::Info),
+                "low" => Some(cli::MinSeverity::Low),
+                "medium" => Some(cli::MinSeverity::Medium),
+                "high" => Some(cli::MinSeverity::High),
+                "critical" => Some(cli::MinSeverity::Critical),
+                _ => None,
+            })
     });
 
     // The text-only path opens with the hero, runs the scan, then

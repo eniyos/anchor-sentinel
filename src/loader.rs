@@ -51,10 +51,10 @@ pub fn load(project: &Path, exclude_patterns: &[String]) -> Result<LoadedProject
             .filter_map(|e| e.ok())
         {
             let p = entry.path();
-            if p.file_name().and_then(|s| s.to_str()) == Some("lib.rs") {
-                if !config::is_excluded(p, exclude_patterns) {
-                    loaded.programs.push(p.to_path_buf());
-                }
+            if p.file_name().and_then(|s| s.to_str()) == Some("lib.rs")
+                && !config::is_excluded(p, exclude_patterns)
+            {
+                loaded.programs.push(p.to_path_buf());
             }
         }
     }

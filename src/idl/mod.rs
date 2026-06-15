@@ -9,6 +9,7 @@
 pub mod ir;
 pub mod v29;
 pub mod v30;
+pub mod v31;
 
 use anyhow::{anyhow, Context, Result};
 use std::path::Path;
@@ -30,6 +31,13 @@ pub fn load_idl(path: &Path) -> Result<ProgramIr> {
 /// Build a `ProgramIr` from a raw `serde_json::Value`, auto-detecting the
 /// IDL dialect.
 pub fn from_value(json: serde_json::Value, source_path: &str) -> Result<ProgramIr> {
+    // Check for v0.31+ format: has metadata, no top-level version
+    if json.get("metadata").is_some() && json.get("version").is_none() {
+        let parsed: v31::IdlFile = serde_json::from_value(json)
+            .with_context(|| format!("deserializing IDL (v31) from {source_path}"))?;
+        return Ok(convert_v31(parsed, source_path));
+    }
+
     let version_str = json
         .get("version")
         .and_then(|v| v.as_str())
@@ -62,6 +70,128 @@ fn detect_version(version_str: &str) -> IdlVersion {
         IdlVersion::V30Plus
     } else {
         IdlVersion::V29
+    }
+}
+
+fn convert_v31(idl: v31::IdlFile, source_path: &str) -> ProgramIr {
+    let instructions = idl
+        .instructions
+        .into_iter()
+        .map(|ix| Instruction {
+            name: ix.name,
+            accounts: ix
+                .accounts
+                .into_iter()
+                .map(|a| {
+                    let is_signer = a.signer || a.relations.iter().any(|r| r == "project");
+                    InstructionAccount {
+                        name: a.name,
+                        is_mut: a.writable,
+                        is_signer,
+                        pda: a.pda.map(|p| PdaDerivation {
+                            seeds: p
+                                .seeds
+                                .into_iter()
+                                .map(|s| {
+                                    // Convert byte array to string (e.g., [97, 112, 105] -> "api")
+                                    let value = s.value.and_then(|v| match v {
+                                        serde_json::Value::Array(arr) => {
+                                            let bytes: Vec<u8> = arr
+                                                .iter()
+                                                .filter_map(|x| x.as_u64().map(|n| n as u8))
+                                                .collect();
+                                            String::from_utf8(bytes).ok()
+                                        }
+                                        serde_json::Value::String(s) => Some(s.clone()),
+                                        _ => None,
+                                    });
+                                    PdaSeed {
+                                        kind: s.kind,
+                                        value,
+                                        path: s.path.or(s.account),
+                                    }
+                                })
+                                .collect(),
+                            program: p.program,
+                        }),
+                        address: a.address,
+                    }
+                })
+                .collect(),
+            args: ix
+                .args
+                .into_iter()
+                .map(|a| {
+                    let ty_str =
+                        a.ty.as_ref()
+                            .map(|v| serde_json::to_string(v).unwrap_or_default())
+                            .unwrap_or_default();
+                    InstructionArg {
+                        name: a.name,
+                        ty: ty_str,
+                    }
+                })
+                .collect(),
+            discriminator: ix.discriminator,
+        })
+        .collect();
+
+    let accounts = idl
+        .accounts
+        .into_iter()
+        .map(|a| AccountDef {
+            name: a.name,
+            discriminator: a.discriminator,
+        })
+        .collect();
+
+    let types = idl
+        .types
+        .into_iter()
+        .filter_map(|t| {
+            let name = t.name.clone();
+            let body = t.body()?;
+            let fields = body
+                .fields
+                .iter()
+                .map(|f| TypeField {
+                    name: f.name.clone(),
+                    ty: serde_json::to_string(&f.ty).unwrap_or_else(|_| "string".to_string()),
+                })
+                .collect();
+            Some(TypeDef {
+                name,
+                kind: body.kind.clone(),
+                fields,
+            })
+        })
+        .collect();
+
+    let events = idl
+        .events
+        .into_iter()
+        .map(|e| EventDef { name: e.name })
+        .collect();
+
+    let errors = idl
+        .errors
+        .into_iter()
+        .map(|e| ErrorDef {
+            code: e.code,
+            name: e.name,
+            msg: e.msg,
+        })
+        .collect();
+
+    ProgramIr {
+        version: IdlVersion::V30Plus,
+        name: idl.metadata.name,
+        instructions,
+        accounts,
+        types,
+        events,
+        errors,
+        source_path: source_path.to_string(),
     }
 }
 

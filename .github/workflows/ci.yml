@@ -15,20 +15,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-
       - name: Cache cargo registry & build artifacts
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-
       - name: Format check
         run: cargo fmt --all -- --check
-
       - name: Clippy (deny warnings)
         run: cargo clippy --all-targets -- -D warnings
 
@@ -37,15 +33,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
-
       - name: Cache cargo registry & build artifacts
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-
       - name: Run all tests
         run: cargo test
 
@@ -55,122 +48,83 @@ jobs:
     needs: [test]
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
-
       - name: Cache cargo registry & build artifacts
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-
-      - name: Cache sentinel binary
-        id: cache-sentinel
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/sentinel
-            target/release/sentinel
-          key: sentinel-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Build sentinel binary
-        if: steps.cache-sentinel.outputs.cache-hit != 'true'
         run: cargo build --bin sentinel --release
-
-      - name: Get sentinel binary path
-        id: sentinel
-        run: |
-          if [ -f target/release/sentinel ]; then
-            echo "path=target/release/sentinel" >> $GITHUB_OUTPUT
-          elif [ -f ~/.cargo/bin/sentinel ]; then
-            echo "path=~/.cargo/bin/sentinel" >> $GITHUB_OUTPUT
-          else
-            echo "path=cargo run --bin sentinel --release --" >> $GITHUB_OUTPUT
-          fi
-
-      - name: End-to-end scan against all fixtures
+      - name: Run integration tests
         run: |
           set +e
-          SENTINEL="${SENTINEL:-$(cargo run --bin sentinel --release --quiet --)}"
           FAIL=0
           for fixture in $(find tests/fixtures -mindepth 1 -maxdepth 1 -type d -exec test -d {}/programs \; -print | sort); do
             name="$(basename "$fixture")"
-            echo "==> scanning $name (strict mode)"
-            output=$($SENTINEL scan --strict "$fixture" 2>&1)
+            echo "==> scanning $name"
+            output=$(./target/release/sentinel scan --strict "$fixture" 2>&1)
             EXIT=$?
             if [ "$EXIT" -eq 0 ]; then
-              echo "  clean fixture -- no findings (exit 0)"
+              echo "  clean fixture (exit 0)"
             elif [ "$EXIT" -eq 1 ]; then
-              echo "  vulnerable fixture -- findings detected (exit 1)"
+              echo "  vulnerable fixture (exit 1)"
             else
-              echo "  ERROR: unexpected exit code $EXIT for $name"
+              echo "  ERROR: unexpected exit code $EXIT"
               FAIL=1
             fi
-            if echo "$output" | grep -qE 'no findings|Security Overview|Risk Score|● '; then
-              echo "  output: OK"
-            else
-              echo "  ERROR: scanner produced no recognizable output"
+            if ! echo "$output" | grep -qE 'no findings|Security Overview|Risk Score|● '; then
+              echo "  ERROR: no recognizable output"
               FAIL=1
             fi
           done
           if [ "$FAIL" -ne 0 ]; then
-            echo "::error::One or more fixtures produced unexpected results"
+            echo "::error::Integration tests failed"
             exit 1
           fi
 
-  binary:
-    name: binary
-    runs-on: ubuntu-latest
+  build:
+    name: build
+    runs-on: ${{ matrix.os }}
     needs: [lint, test]
     strategy:
+      fail-fast: false
       matrix:
-        target:
+        include:
           - os: ubuntu-latest
-            artifact: sentinel-x86_64-unknown-linux-gnu.tar.gz
+            target: x86_64-unknown-linux-gnu
+            artifact: sentinel-linux-x64.tar.gz
+            ext: tar.gz
           - os: macos-latest
-            artifact: sentinel-x86_64-apple-darwin.tar.gz
+            target: x86_64-apple-darwin
+            artifact: sentinel-macos-x64.tar.gz
+            ext: tar.gz
           - os: windows-latest
-            artifact: sentinel-x86_64-pc-windows-msvc.zip
-
+            target: x86_64-pc-windows-msvc
+            artifact: sentinel-windows-x64.zip
+            ext: zip
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain (stable)
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry & build artifacts
+      - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
-
       - name: Build release binary
         run: cargo build --bin sentinel --release
-
       - name: Package binary
         shell: bash
         run: |
           mkdir -p dist
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            cp target/release/sentinel.exe dist/sentinel.exe
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/release/sentinel.exe dist/
             cd dist && powershell -Command "Compress-Archive sentinel.exe ../${{ matrix.artifact }}"
           else
-            cp target/release/sentinel dist/sentinel
-            if [ "${{ runner.os }}" == "macOS" ]; then
-              tar -czf ../${{ matrix.artifact }} -C dist sentinel
-            else
-              tar -czf ../${{ matrix.artifact }} -C dist sentinel
-            fi
+            cp target/release/sentinel dist/
+            tar -czf ../${{ matrix.artifact }} -C dist sentinel
           fi
-
-      - name: Upload release artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
-          retention-days: 30
-
-      - name: Create or update Release
-        if: github.event_name == 'push' && github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ matrix.artifact }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          retention-days: 7

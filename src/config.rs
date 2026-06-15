@@ -27,7 +27,7 @@ impl Config {
             return config;
         }
 
-        if let Some(cwd) = std::env::current_dir().ok() {
+        if let Ok(cwd) = std::env::current_dir() {
             if cwd != project_root {
                 if let Some(config) = Self::load_from(&cwd) {
                     return config;

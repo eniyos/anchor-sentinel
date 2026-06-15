@@ -136,7 +136,7 @@ fn cmd_scan(
     let t_parse = t_parse_start.elapsed();
 
     let t_ast_start = Instant::now();
-    let ast_hints = ast::collect_hints(&loaded.programs).context("collecting AST hints")?;
+    let ast_hints = ast::collect_hints(&loaded.programs);
     let t_ast = t_ast_start.elapsed();
 
     let t_rules_start = Instant::now();

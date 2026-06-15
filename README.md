@@ -210,7 +210,10 @@ See [`sentinel.example.toml`](sentinel.example.toml) for a full example.
 
 ## CI integration
 
-Drop a workflow into `.github/workflows/security.yml`:
+### GitHub Action (recommended)
+
+The [`scan`](.github/actions/scan/action.yml) action downloads pre-built binaries,
+runs the scanner, and uploads results to GitHub's Security tab.
 
 ```yaml
 name: Security Scan
@@ -228,7 +231,16 @@ jobs:
       - uses: Eniyanyosuva/anchor-sentinel/.github/actions/scan@main
         with:
           fail-on-severity: high
+          ignore-rules: "missing_mut,unchecked_balance_flow"
 ```
+
+Action inputs:
+| Input | Default | Description |
+|-------|---------|-------------|
+| `working-directory` | `.` | Path to Anchor project |
+| `fail-on-severity` | `high` | Min severity to fail build |
+| `ignore-rules` | | Comma-separated rules to skip |
+| `version` | `latest` | anchor-sentinel version |
 
 Findings show up as PR annotations and in the **Security** tab
 via SARIF. See [docs/ci.md](docs/ci.md) for raw-CLI recipes for

@@ -64,21 +64,35 @@ jobs:
         with:
           cache-on-failure: true
 
+      - name: Cache sentinel binary
+        id: cache-sentinel
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/sentinel
+            target/release/sentinel
+          key: sentinel-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Build sentinel binary
+        if: steps.cache-sentinel.outputs.cache-hit != 'true'
         run: cargo build --bin sentinel --release
+
+      - name: Get sentinel binary path
+        id: sentinel
+        run: |
+          if [ -f target/release/sentinel ]; then
+            echo "path=target/release/sentinel" >> $GITHUB_OUTPUT
+          elif [ -f ~/.cargo/bin/sentinel ]; then
+            echo "path=~/.cargo/bin/sentinel" >> $GITHUB_OUTPUT
+          else
+            echo "path=cargo run --bin sentinel --release --" >> $GITHUB_OUTPUT
+          fi
 
       - name: End-to-end scan against all fixtures
         run: |
-          # Disable errexit: sentinel intentionally exits non-zero on vulnerable
-          # fixtures, and the loop below inspects $? explicitly. With `set -e`
-          # the script aborts on the first non-zero exit before the if/elif/else
-          # branches can run.
           set +e
-          SENTINEL=./target/release/sentinel
+          SENTINEL="${SENTINEL:-$(cargo run --bin sentinel --release --quiet --)}"
           FAIL=0
-          # Only consider fixtures that contain a `programs/` subdirectory.
-          # This excludes grouping directories (e.g. `public/`) and stub
-          # directories that have no Anchor program to scan.
           for fixture in $(find tests/fixtures -mindepth 1 -maxdepth 1 -type d -exec test -d {}/programs \; -print | sort); do
             name="$(basename "$fixture")"
             echo "==> scanning $name (strict mode)"
@@ -92,11 +106,6 @@ jobs:
               echo "  ERROR: unexpected exit code $EXIT for $name"
               FAIL=1
             fi
-            # Verify scanner produced recognizable output (not a crash).
-            # The redesigned CLI prints: the "Security Overview" header
-            # + a "Risk Score" line on every scan; either a "✔ no
-            # findings" line on clean fixtures, or a "●" bullet per
-            # finding on vulnerable ones. Match on any of these.
             if echo "$output" | grep -qE 'no findings|Security Overview|Risk Score|● '; then
               echo "  output: OK"
             else
@@ -109,33 +118,59 @@ jobs:
             exit 1
           fi
 
-  wasm:
-    name: wasm
+  binary:
+    name: binary
     runs-on: ubuntu-latest
+    needs: [lint, test]
+    strategy:
+      matrix:
+        target:
+          - os: ubuntu-latest
+            artifact: sentinel-x86_64-unknown-linux-gnu.tar.gz
+          - os: macos-latest
+            artifact: sentinel-x86_64-apple-darwin.tar.gz
+          - os: windows-latest
+            artifact: sentinel-x86_64-pc-windows-msvc.zip
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
 
       - name: Cache cargo registry & build artifacts
         uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
 
-      - name: Install wasm-pack
-        # Install via cargo (slow but reliable — the curl|sh installer
-        # hits a dash-vs-bash issue on the GitHub-hosted runners).
-        run: cargo install wasm-pack --locked
+      - name: Build release binary
+        run: cargo build --bin sentinel --release
 
-      - name: Build WASM module
-        run: wasm-pack build --target web --out-dir playground/pkg
+      - name: Package binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            cp target/release/sentinel.exe dist/sentinel.exe
+            cd dist && powershell -Command "Compress-Archive sentinel.exe ../${{ matrix.artifact }}"
+          else
+            cp target/release/sentinel dist/sentinel
+            if [ "${{ runner.os }}" == "macOS" ]; then
+              tar -czf ../${{ matrix.artifact }} -C dist sentinel
+            else
+              tar -czf ../${{ matrix.artifact }} -C dist sentinel
+            fi
+          fi
 
-      - name: Upload WASM artifact
+      - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sentinel-wasm
-          path: playground/pkg
-          retention-days: 14
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          retention-days: 30
+
+      - name: Create or update Release
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

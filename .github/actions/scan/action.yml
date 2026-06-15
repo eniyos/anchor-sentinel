@@ -1,10 +1,10 @@
 name: "Anchor Sentinel"
 description: "Static security analysis for Solana Anchor programs"
-author: "Eniyanyosuva"
+author: "eniyos"
 
 branding:
   icon: "shield"
-  color: "orange"
+  color: "purple"
 
 inputs:
   working-directory:
@@ -19,30 +19,84 @@ inputs:
     description: "Comma-separated list of rule IDs to skip"
     required: false
     default: ""
+  version:
+    description: "Version of anchor-sentinel to use (defaults to latest)"
+    required: false
+    default: "latest"
 
 runs:
   using: "composite"
   steps:
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Install anchor-sentinel
-      run: cargo install anchor-sentinel
+    - name: Determine platform
+      id: platform
       shell: bash
+      run: |
+        case "${{ runner.os }}" in
+          Linux)  echo "os=linux" >> $GITHUB_OUTPUT ;;
+          macOS)  echo "os=macos" >> $GITHUB_OUTPUT ;;
+          Windows) echo "os=windows" >> $GITHUB_OUTPUT ;;
+        esac
+        echo "arch=${{ runner.arch }}" >> $GITHUB_OUTPUT
+
+    - name: Get version
+      id: version
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" == "latest" ]; then
+          VERSION=$(curl -s https://api.github.com/repos/eniyos/anchor-sentinel/releases/latest | grep '"tag_name"' | sed 's/.*"v\?\([^"]*\)".*/\1/')
+        else
+          VERSION="${{ inputs.version }}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Downloading anchor-sentinel v$VERSION..."
+
+    - name: Download pre-built binary (Linux)
+      if: steps.platform.outputs.os == 'linux'
+      shell: bash
+      run: |
+        curl -sL "https://github.com/eniyos/anchor-sentinel/releases/download/v${{ steps.version.outputs.version }}/sentinel-x86_64-unknown-linux-gnu.tar.gz" \
+          -o sentinel.tar.gz
+        tar -xzf sentinel.tar.gz
+        chmod +x sentinel
+        echo "$(pwd)/sentinel" >> $GITHUB_PATH
+
+    - name: Download pre-built binary (macOS)
+      if: steps.platform.outputs.os == 'macos'
+      shell: bash
+      run: |
+        curl -sL "https://github.com/eniyos/anchor-sentinel/releases/download/v${{ steps.version.outputs.version }}/sentinel-x86_64-apple-darwin.tar.gz" \
+          -o sentinel.tar.gz
+        tar -xzf sentinel.tar.gz
+        chmod +x sentinel
+        echo "$(pwd)/sentinel" >> $GITHUB_PATH
+
+    - name: Download pre-built binary (Windows)
+      if: steps.platform.outputs.os == 'windows'
+      shell: bash
+      run: |
+        curl -sL "https://github.com/eniyos/anchor-sentinel/releases/download/v${{ steps.version.outputs.version }}/sentinel-x86_64-pc-windows-msvc.zip" \
+          -o sentinel.zip
+        unzip -o sentinel.zip
+        echo "$(pwd)/sentinel.exe" >> $GITHUB_PATH
 
     - name: Run Sentinel scan
       id: scan
+      env:
+        SENTINEL_IGNORE: ${{ inputs.ignore-rules }}
+      shell: bash
       run: |
+        IGNORE_ARGS=""
+        if [ -n "$SENTINEL_IGNORE" ]; then
+          IGNORE_ARGS="--ignore $SENTINEL_IGNORE"
+        fi
         sentinel scan "${{ inputs.working-directory }}" \
           --format sarif \
           --min-severity "${{ inputs.fail-on-severity }}" \
-          ${{ inputs.ignore-rules != '' && format('--ignore {0}', inputs.ignore-rules) || '' }} \
+          $IGNORE_ARGS \
           > sentinel-results.sarif 2>&1 || true
-        # Ensure the SARIF file exists even if sentinel failed (e.g. no IDL files)
         if [ ! -s sentinel-results.sarif ]; then
-          echo '{"\$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[]}' > sentinel-results.sarif
+          echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[]}' > sentinel-results.sarif
         fi
-      shell: bash
 
     - name: Upload SARIF to GitHub Code Scanning
       uses: github/codeql-action/upload-sarif@v4
@@ -51,9 +105,14 @@ runs:
         wait-for-processing: false
 
     - name: Check scan result
+      env:
+        SENTINEL_IGNORE: ${{ inputs.ignore-rules }}
+      shell: bash
       run: |
-        # Re-run sentinel without SARIF to get the real exit code
+        IGNORE_ARGS=""
+        if [ -n "$SENTINEL_IGNORE" ]; then
+          IGNORE_ARGS="--ignore $SENTINEL_IGNORE"
+        fi
         sentinel scan "${{ inputs.working-directory }}" \
           --min-severity "${{ inputs.fail-on-severity }}" \
-          ${{ inputs.ignore-rules != '' && format('--ignore {0}', inputs.ignore-rules) || '' }}
-      shell: bash
+          $IGNORE_ARGS

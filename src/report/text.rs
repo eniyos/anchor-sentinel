@@ -173,7 +173,7 @@ mod risk {
 
 /// Print the scan opener: a brand line, a tagline, and the target
 /// path. Three lines plus a blank. No box, no animation.
-pub fn print_hero(project: &str) {
+pub fn print_hero(project: &str, config: &crate::config::Config) {
     if tty::interactive() {
         // The brand line: ⚓ glyph in bright_cyan+bold, "Anchor Sentinel"
         // in white+bold, version in dim. Per the spec the human-readable
@@ -191,11 +191,25 @@ pub fn print_hero(project: &str) {
         );
         println!();
         println!("{}  {}", "Target:".dimmed(), project);
+
+        // Show config info if loaded
+        if !config.exclude.is_empty() {
+            println!("{}  {} patterns", "Exclude:".dimmed(), config.exclude.len());
+        }
+        if !config.ignore.is_empty() {
+            println!("{}  {} rules", "Ignore:".dimmed(), config.ignore.len());
+        }
     } else {
         println!("Anchor Sentinel v{}", env!("CARGO_PKG_VERSION"));
         println!("Static Security Analysis for Solana Programs");
         println!();
         println!("Target:  {}", project);
+        if !config.exclude.is_empty() {
+            println!("Exclude:  {} patterns", config.exclude.len());
+        }
+        if !config.ignore.is_empty() {
+            println!("Ignore:   {} rules", config.ignore.len());
+        }
     }
 }
 

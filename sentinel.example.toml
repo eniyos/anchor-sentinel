@@ -1,0 +1,22 @@
+# Anchor Sentinel Configuration
+# Place this file as `sentinel.toml` in your project root.
+
+# Paths to exclude from scanning.
+# Supports exact paths and glob patterns (e.g., "tests/*")
+exclude = [
+    "tests",
+    "migrations",
+    "programs/test",
+]
+
+# Default rules to ignore.
+# These can still be overridden with --ignore on the CLI.
+ignore = [
+    "missing_mut",
+    "unchecked_balance_flow",
+]
+
+# Minimum severity to report by default.
+# CLI --min-severity takes precedence over this.
+# Options: info, low, medium, high, critical
+min_severity = "medium"

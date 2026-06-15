@@ -167,9 +167,6 @@ cargo install --force anchor-sentinel
 Requires a stable Rust toolchain (1.70+). Get one at
 [rustup.rs](https://rustup.rs).
 
-You can also try the [WASM playground](https://eniyanyosuva.github.io/anchor-sentinel/)
-in your browser — no install required.
-
 ## Quickstart
 
 Inside an Anchor project (the directory containing `Anchor.toml`),
@@ -193,6 +190,23 @@ sentinel rules                                  # list all rules
 
 For the full flag reference, run `sentinel scan --help` or see
 [docs/cli.md](docs/cli.md).
+
+## Configuration
+
+Create a `sentinel.toml` in your project root to persist settings:
+
+```toml
+# Paths to exclude from scanning
+exclude = ["tests", "migrations", "programs/test"]
+
+# Rules to ignore by default
+ignore = ["missing_mut", "unchecked_balance_flow"]
+
+# Minimum severity to report
+min_severity = "medium"
+```
+
+See [`sentinel.example.toml`](sentinel.example.toml) for a full example.
 
 ## CI integration
 

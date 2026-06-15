@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [lib]
 name = "anchor_sentinel"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 path = "src/lib.rs"
 
 [dependencies]
@@ -31,17 +31,8 @@ thiserror = "1.0"
 walkdir = "2.5"
 colored = "2.1"
 inventory = "0.3"
-
-# `ctrlc` doesn't compile for wasm32 (no signals there). We only
-# need Ctrl+C handling for the native CLI binary.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ctrlc = "3"
 is-terminal = "0.4"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
-serde-wasm-bindgen = "0.6"
-console_error_panic_hook = "0.1"
 
 [dev-dependencies]
 assert_cmd = "2.0"

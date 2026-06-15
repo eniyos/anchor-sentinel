@@ -4,6 +4,7 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+use crate::config;
 use crate::idl::{self, ir::ProgramIr};
 
 /// What the loader found in a project directory.
@@ -26,18 +27,19 @@ impl LoadedProject {
     }
 }
 
-/// Discover IDL files and program `lib.rs` paths under `project`.
-///
-/// This is intentionally cheap: it just walks the directory and does not
-/// parse anything.
-pub fn load(project: &Path) -> Result<LoadedProject> {
+/// Discover IDL files and program `lib.rs` paths under `project`,
+/// excluding any paths matching `exclude_patterns`.
+pub fn load(project: &Path, exclude_patterns: &[String]) -> Result<LoadedProject> {
     use walkdir::WalkDir;
 
     let mut loaded = LoadedProject::new(project.to_path_buf());
 
     // Anchor conventionally puts IDLs at <project>/target/idl/*.json.
     if let Ok(idls) = idl::discover_idl_files(project) {
-        loaded.idl_files = idls;
+        loaded.idl_files = idls
+            .into_iter()
+            .filter(|p| !config::is_excluded(p, exclude_patterns))
+            .collect();
     }
 
     // And programs at <project>/programs/*/src/lib.rs.
@@ -50,7 +52,9 @@ pub fn load(project: &Path) -> Result<LoadedProject> {
         {
             let p = entry.path();
             if p.file_name().and_then(|s| s.to_str()) == Some("lib.rs") {
-                loaded.programs.push(p.to_path_buf());
+                if !config::is_excluded(p, exclude_patterns) {
+                    loaded.programs.push(p.to_path_buf());
+                }
             }
         }
     }

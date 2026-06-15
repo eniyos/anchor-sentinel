@@ -2,6 +2,7 @@
 
 mod ast;
 mod cli;
+mod config;
 mod engine;
 mod idl;
 mod loader;
@@ -81,11 +82,34 @@ fn cmd_scan(
         anyhow::bail!("project path does not exist: {}", project.display());
     }
 
+    // Load config from sentinel.toml (project root or cwd)
+    let cfg = config::Config::load(project);
+
+    // Merge CLI ignore with config ignore (CLI takes precedence)
+    let mut all_ignore = cfg.ignore.clone();
+    for i in ignore {
+        if !all_ignore.contains(i) {
+            all_ignore.push(i.clone());
+        }
+    }
+
+    // Apply min_severity from config if not set via CLI
+    let effective_min_severity = min_severity.or_else(|| {
+        cfg.min_severity.as_ref().and_then(|s| match s.to_lowercase().as_str() {
+            "info" => Some(cli::MinSeverity::Info),
+            "low" => Some(cli::MinSeverity::Low),
+            "medium" => Some(cli::MinSeverity::Medium),
+            "high" => Some(cli::MinSeverity::High),
+            "critical" => Some(cli::MinSeverity::Critical),
+            _ => None,
+        })
+    });
+
     // The text-only path opens with the hero, runs the scan, then
     // prints the 6 sections in order. JSON/SARIF bypass the entire
     // text path to keep stdout byte-clean for machine consumers.
     if matches!(format, cli::OutputFormat::Text) {
-        text::print_hero(&project.display().to_string());
+        text::print_hero(&project.display().to_string(), &cfg);
     }
 
     // Per-stage timing. Each `Instant::now()` is right before the
@@ -96,7 +120,7 @@ fn cmd_scan(
     let t_total_start = Instant::now();
 
     let t_load_start = Instant::now();
-    let loaded = loader::load(project).context("loading project")?;
+    let loaded = loader::load(project, &cfg.exclude).context("loading project")?;
     if loaded.idl_files.is_empty() {
         anyhow::bail!(
             "no IDL files found. Run `anchor build` inside the project first \
@@ -133,13 +157,13 @@ fn cmd_scan(
         total: t_total,
     };
 
-    // Apply --ignore.
-    if !ignore.is_empty() {
-        all_findings.retain(|f| !ignore.iter().any(|i| i == &f.rule));
+    // Apply --ignore (merged with config).
+    if !all_ignore.is_empty() {
+        all_findings.retain(|f| !all_ignore.iter().any(|i| i == &f.rule));
     }
 
-    // Apply --min-severity.
-    let min = min_severity.map(|m| m.into_severity());
+    // Apply --min-severity (config value used if CLI not set).
+    let min = effective_min_severity.map(|m| m.into_severity());
     if let Some(min) = min {
         all_findings.retain(|f| f.severity >= min);
     }

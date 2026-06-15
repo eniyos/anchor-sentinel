@@ -6,7 +6,6 @@
 //! pairs in the final `AstHint` so rules can stamp findings without any
 //! further work.
 
-use anyhow::Result;
 use std::path::Path;
 use syn::visit::Visit;
 
@@ -16,54 +15,14 @@ mod accounts_struct;
 mod instruction_fn;
 
 /// Parse each path the loader gave us and collect AST hints.
-pub fn collect_hints(paths: &[std::path::PathBuf]) -> Result<Vec<AstHint>> {
+pub fn collect_hints(paths: &[std::path::PathBuf]) -> Vec<AstHint> {
     let mut out = Vec::new();
     for p in paths {
         if let Some(hints) = parse_file(p) {
             out.extend(hints);
         }
     }
-    Ok(out)
-}
-
-/// Parse a single Rust source string and return the AST hints it
-/// produces. The `file` label is stamped onto each hint so the report
-/// can show `file:line:column`. Used by the WASM entrypoint, which has
-/// no filesystem to walk.
-///
-/// The `#[allow(dead_code)]` is for the native build: the function is
-/// only called from the `wasm32` target, but the symbol is part of
-/// the rlib so we don't want clippy to fail CI on it.
-#[allow(dead_code)]
-pub fn collect_hints_from_source(file: &str, src: &str) -> Result<Vec<AstHint>> {
-    let ast = syn::parse_file(src).map_err(|e| anyhow::anyhow!("parsing Rust source: {e}"))?;
-
-    let mut accounts = accounts_struct::FileAccounts::default();
-    let mut fns = instruction_fn::FileFns::default();
-    let mut av = accounts_struct::AccountsStructVisitor::new(file, &mut accounts);
-    let mut fv = instruction_fn::InstructionFnVisitor::new(file, &mut fns);
-
-    av.visit_file(&ast);
-    fv.visit_file(&ast);
-
-    let mut hints: Vec<AstHint> = Vec::new();
-    for raw in accounts.hints {
-        hints.push(AstHint {
-            kind: raw.kind,
-            file: file.to_string(),
-            line: raw.start.line,
-            column: raw.start.column,
-        });
-    }
-    for raw in fns.hints {
-        hints.push(AstHint {
-            kind: raw.kind,
-            file: file.to_string(),
-            line: raw.start.line,
-            column: raw.start.column,
-        });
-    }
-    Ok(hints)
+    out
 }
 
 fn parse_file(path: &Path) -> Option<Vec<AstHint>> {

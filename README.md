@@ -3,7 +3,7 @@
 > Detect critical Solana smart contract vulnerabilities before deployment.
 > Also teaches *why* each pattern is dangerous.
 
-[![crates.io](https://img.shields.io/crates/v/anchor-sentinel)](https://crates.io/crates/anchor-sentinel)
+[![crates.io](https://img.shields.io/crates/v/anchor-sentinel.svg?style=flat-square)](https://crates.io/crates/anchor-sentinel)
 [![CI](https://github.com/Eniyanyosuva/anchor-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/Eniyanyosuva/anchor-sentinel/actions)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE)
 

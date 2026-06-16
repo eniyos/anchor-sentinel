@@ -1,11 +1,11 @@
 [package]
 name = "anchor-sentinel"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
-description = "Static security analysis CLI for Solana Anchor programs"
+description = "Static security analysis CLI for Solana Anchor programs with educational explanations"
 license = "MIT"
-repository = "https://github.com/eniyanyosuva/anchor-sentinel"
-homepage = "https://github.com/eniyanyosuva/anchor-sentinel"
+repository = "https://github.com/eniyos/anchor-sentinel"
+homepage = "https://github.com/eniyos/anchor-sentinel"
 readme = "README.md"
 keywords = ["solana", "anchor", "security", "static-analysis", "blockchain"]
 categories = ["command-line-utilities", "development-tools"]

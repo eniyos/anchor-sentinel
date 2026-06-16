@@ -44,6 +44,12 @@ pub enum Command {
 
     /// Print the sentinel version.
     Version,
+
+    /// Explain a security rule in detail.
+    Explain {
+        /// The rule id to explain (e.g., missing_signer).
+        rule_id: String,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Default, ValueEnum)]

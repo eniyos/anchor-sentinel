@@ -19,9 +19,6 @@ use cli::{Cli, Command};
 use engine::{AnalysisContext, Severity};
 use report::text;
 
-/// Total wall-clock spent in the scan phases (used to drive the
-/// exit-code / strict-mode decision and to populate the Statistics
-/// section's timings).
 struct ScanTimings {
     load: std::time::Duration,
     parse_idls: std::time::Duration,
@@ -31,8 +28,6 @@ struct ScanTimings {
 }
 
 fn main() -> ExitCode {
-    // Ctrl+C: exit 130. We don't run the spinner anymore, so the
-    // "clear the spinner line" branch is gone.
     let _ = ctrlc::set_handler(|| {
         eprintln!();
         eprintln!("  ✗ Interrupted");
@@ -67,6 +62,10 @@ fn run(cli: Cli) -> Result<ExitCode> {
             println!("sentinel {}", env!("CARGO_PKG_VERSION"));
             Ok(ExitCode::SUCCESS)
         }
+        Command::Explain { rule_id } => {
+            cmd_explain(&rule_id);
+            Ok(ExitCode::SUCCESS)
+        }
     }
 }
 
@@ -82,10 +81,8 @@ fn cmd_scan(
         anyhow::bail!("project path does not exist: {}", project.display());
     }
 
-    // Load config from sentinel.toml (project root or cwd)
     let cfg = config::Config::load(project);
 
-    // Merge CLI ignore with config ignore (CLI takes precedence)
     let mut all_ignore = cfg.ignore.clone();
     for i in ignore {
         if !all_ignore.contains(i) {
@@ -93,7 +90,6 @@ fn cmd_scan(
         }
     }
 
-    // Apply min_severity from config if not set via CLI
     let effective_min_severity = min_severity.or_else(|| {
         cfg.min_severity
             .as_ref()
@@ -107,18 +103,10 @@ fn cmd_scan(
             })
     });
 
-    // The text-only path opens with the hero, runs the scan, then
-    // prints the 6 sections in order. JSON/SARIF bypass the entire
-    // text path to keep stdout byte-clean for machine consumers.
     if matches!(format, cli::OutputFormat::Text) {
         text::print_hero(&project.display().to_string(), &cfg);
     }
 
-    // Per-stage timing. Each `Instant::now()` is right before the
-    // work, `.elapsed()` right after. The five phases map to the
-    // Pipeline section's 5 rows (Loaded rules / Parsed IDL / Built
-    // AST / Indexed accounts / Executed security checks) plus the
-    // wall-clock total.
     let t_total_start = Instant::now();
 
     let t_load_start = Instant::now();
@@ -159,38 +147,28 @@ fn cmd_scan(
         total: t_total,
     };
 
-    // Apply --ignore (merged with config).
     if !all_ignore.is_empty() {
         all_findings.retain(|f| !all_ignore.iter().any(|i| i == &f.rule));
     }
 
-    // Apply --min-severity (config value used if CLI not set).
     let min = effective_min_severity.map(|m| m.into_severity());
     if let Some(min) = min {
         all_findings.retain(|f| f.severity >= min);
     }
 
-    // Compute the aggregate counts once. Used by both the text
-    // sections and the exit-code decision.
     let rule_count = engine::registry::list_rule_ids().len();
     let programs_count = loaded.programs.len();
     let instructions_count: usize = programs.iter().map(|p| p.instructions.len()).sum();
 
     match format {
         cli::OutputFormat::Sarif => {
-            // Machine-readable: byte-for-byte identical to v0.1.
             println!("{}", report::sarif::render(&all_findings));
         }
         cli::OutputFormat::Json => {
-            // Machine-readable: byte-for-byte identical to v0.1.
             println!("{}", report::json::render(&all_findings));
         }
         cli::OutputFormat::Text => {
-            // Sectioned text output. The order is: hero (already
-            // printed above) → pipeline → overview → findings →
-            // statistics → verdict. Each section is a single
-            // println!-driven function in `text`.
-            let report = text::ScanReport {
+            let scan_report = text::ScanReport {
                 timings: text::ScanTimings {
                     load: timings.load,
                     parse_idls: timings.parse_idls,
@@ -203,15 +181,14 @@ fn cmd_scan(
                 rules_executed: rule_count,
                 findings: &all_findings,
             };
-            text::print_pipeline(&report.timings);
+            text::print_pipeline(&scan_report.timings);
             text::print_security_overview(&all_findings);
             text::print_findings(&all_findings);
-            text::print_statistics(&report);
+            text::print_statistics(&scan_report);
             text::print_verdict(&all_findings);
         }
     }
 
-    // Decide exit code.
     let has_blocking = if let Some(min) = min {
         all_findings.iter().any(|f| f.severity >= min)
     } else {
@@ -227,4 +204,55 @@ fn cmd_scan(
 
 fn cmd_rules() {
     text::print_rules_table();
+}
+
+fn cmd_explain(rule_id: &str) {
+    if let Some(explain) = report::explain::get_explanation(rule_id) {
+        println!();
+        println!("{}", "=".repeat(70));
+        println!("⚓ {}", explain.title);
+        println!("{}", "=".repeat(70));
+        println!();
+        println!("ID:        {}", explain.id);
+        println!("Severity:  {}", explain.severity);
+        println!();
+        println!("{}", "-".repeat(70));
+        println!("WHAT");
+        println!("{}", "-".repeat(70));
+        println!("{}", explain.what);
+        println!();
+        println!("{}", "-".repeat(70));
+        println!("WHY THIS IS DANGEROUS");
+        println!("{}", "-".repeat(70));
+        println!("{}", explain.why);
+        println!();
+        println!("{}", "-".repeat(70));
+        println!("VULNERABLE EXAMPLE");
+        println!("{}", "-".repeat(70));
+        for line in explain.vulnerable_example.lines() {
+            println!("{}", line);
+        }
+        println!();
+        println!("{}", "-".repeat(70));
+        println!("SAFE EXAMPLE");
+        println!("{}", "-".repeat(70));
+        for line in explain.safe_example.lines() {
+            println!("{}", line);
+        }
+        println!();
+        if let Some(ref_url) = explain.exploit_ref {
+            println!("{}", "-".repeat(70));
+            println!("EXPLOIT REFERENCE");
+            println!("{}", "-".repeat(70));
+            println!("{}", ref_url);
+        }
+        println!();
+        println!("{}", "=".repeat(70));
+        println!();
+        println!("Learn more: Run `sentinel scan .` to detect this pattern in your code.");
+        println!("See also: `sentinel rules` for all security rules.");
+    } else {
+        eprintln!("error: unknown rule '{}'", rule_id);
+        eprintln!("Run `sentinel rules` to see all available rules.");
+    }
 }

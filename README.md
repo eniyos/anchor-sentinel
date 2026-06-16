@@ -167,6 +167,17 @@ cargo install --force anchor-sentinel
 Requires a stable Rust toolchain (1.70+). Get one at
 [rustup.rs](https://rustup.rs).
 
+### Pre-built Binaries
+
+Download binaries for your platform from the
+[Releases](https://github.com/eniyos/anchor-sentinel/releases) page:
+
+| Platform | File |
+|----------|------|
+| Linux | `sentinel-linux-x64.tar.gz` |
+| macOS | `sentinel-macos-x64.tar.gz` |
+| Windows | `sentinel-windows-x64.zip` |
+
 ## Quickstart
 
 Inside an Anchor project (the directory containing `Anchor.toml`),
@@ -315,8 +326,8 @@ Run `anchor build` inside the project first. Sentinel reads
 
 **`error: could not parse IDL`**
 The IDL is malformed or from a version Sentinel doesn't support.
-Sentinel auto-detects Anchor 0.30+ and legacy 0.29. If neither
-parses, open an issue with the IDL attached (strip account data).
+Sentinel auto-detects Anchor 0.29, 0.30, and 0.31+ IDL formats.
+If parsing fails, open an issue with the IDL attached (strip account data).
 
 **A `Signer` field triggers a missing-signer warning**
 The IDL and source disagree: the field is typed `Signer<'info>`

@@ -1,6 +1,7 @@
 # Anchor Sentinel
 
 > Detect critical Solana smart contract vulnerabilities before deployment.
+> Also teaches *why* each pattern is dangerous.
 
 [![crates.io](https://img.shields.io/crates/v/anchor-sentinel)](https://crates.io/crates/anchor-sentinel)
 [![CI](https://github.com/Eniyanyosuva/anchor-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/Eniyanyosuva/anchor-sentinel/actions)
@@ -15,9 +16,12 @@ unsafe arithmetic, and other common Solana security mistakes —
 the same classes of bug that have shipped to mainnet in real
 programs.
 
-It is a first-pass security review system: fast, deterministic,
-and CI-friendly. Run it on every push. Treat a failing scan as
-a build break.
+**Security tool + educational resource.** Run `sentinel explain <rule>`
+to learn why a pattern is dangerous, with vulnerable/safe code examples
+and real exploit references.
+
+Fast, deterministic, and CI-friendly. Run it on every push.
+Treat a failing scan as a build break.
 
 ## What it catches
 
@@ -190,13 +194,25 @@ anchor build        # writes target/idl/<program>.json
 Then:
 
 ```sh
-sentinel scan .                                # human-readable
+sentinel scan .                                # human-readable scan
 sentinel scan . --format json                   # machine-readable
 sentinel scan . --format sarif                  # GitHub Code Scanning
 sentinel scan . --strict                        # exit 1 on any non-info
 sentinel scan . --min-severity high             # exit 1 on high+
 sentinel scan . --ignore missing_mut            # suppress one rule
-sentinel rules                                  # list all rules
+sentinel rules                                  # list all security rules
+sentinel explain missing_signer                 # learn why a rule matters
+```
+
+### Learn Security
+
+`sentinel explain <rule>` teaches you *why* a pattern is dangerous,
+with vulnerable and safe code examples:
+
+```sh
+sentinel explain missing_balance_check   # explains balance check vulnerability
+sentinel explain missing_signer        # explains signer authorization
+sentinel explain unsafe_arithmetic     # explains overflow risks
 ```
 
 For the full flag reference, run `sentinel scan --help` or see

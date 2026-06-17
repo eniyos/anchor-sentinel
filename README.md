@@ -43,7 +43,7 @@ Run against a vulnerable vault program:
 ```text
 $ sentinel scan ./tests/fixtures/vault-vulnerable
 
-Anchor Sentinel v0.4.0
+Anchor Sentinel v0.5.0
 Static Security Analysis for Solana Programs
 
 Target:  ./tests/fixtures/vault-vulnerable
@@ -98,7 +98,7 @@ Run against a clean program:
 ```text
 $ sentinel scan ./tests/fixtures/vault-clean
 
-Anchor Sentinel v0.4.0
+Anchor Sentinel v0.5.0
 Static Security Analysis for Solana Programs
 
 Target:  ./tests/fixtures/vault-clean

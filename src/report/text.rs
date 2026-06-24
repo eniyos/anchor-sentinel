@@ -181,10 +181,18 @@ pub fn print_hero(project: &str, config: &crate::config::Config) {
 
         // Show config info if loaded
         if !config.exclude.paths.is_empty() {
-            println!("{}  {} patterns", "Exclude:".dimmed(), config.exclude.paths.len());
+            println!(
+                "{}  {} patterns",
+                "Exclude:".dimmed(),
+                config.exclude.paths.len()
+            );
         }
         if !config.ignore.rules.is_empty() {
-            println!("{}  {} rules", "Ignore:".dimmed(), config.ignore.rules.len());
+            println!(
+                "{}  {} rules",
+                "Ignore:".dimmed(),
+                config.ignore.rules.len()
+            );
         }
     } else {
         println!("Anchor Sentinel v{}", env!("CARGO_PKG_VERSION"));

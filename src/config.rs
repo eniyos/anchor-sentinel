@@ -192,10 +192,7 @@ mod tests {
             min = "critical"
         "#;
         let config = Config::parse(toml).unwrap();
-        assert_eq!(
-            config.exclude.paths,
-            vec!["src/lib.rs", "tests/**/*.rs"]
-        );
+        assert_eq!(config.exclude.paths, vec!["src/lib.rs", "tests/**/*.rs"]);
         assert_eq!(
             config.ignore.rules,
             vec!["missing_mut", "unsafe_arithmetic"]

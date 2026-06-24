@@ -29,7 +29,7 @@
 use anyhow::Result;
 use std::collections::HashSet;
 
-use crate::engine::{AnalysisContext, AstHintKind, AstHint, Finding, Layer, Rule, Severity};
+use crate::engine::{AnalysisContext, AstHint, AstHintKind, Finding, Layer, Rule, Severity};
 
 pub struct MissingReinitGuard;
 
@@ -122,13 +122,11 @@ fn has_init_if_needed(constraints: &[String]) -> bool {
 /// `realloc` alone is NOT a guard — it only controls whether data is zeroed
 /// on reallocation. It must be paired with a `constraint = ...` expression
 /// that verifies the caller's authority.
-fn has_reinit_guard(
-    constraints: &[String],
-    ast_hints: &[AstHint],
-    struct_name: &str,
-) -> bool {
+fn has_reinit_guard(constraints: &[String], ast_hints: &[AstHint], struct_name: &str) -> bool {
     for c in constraints {
-        let tokens: Vec<&str> = c.split(|ch: char| ch == ',' || ch.is_whitespace()).collect();
+        let tokens: Vec<&str> = c
+            .split(|ch: char| ch == ',' || ch.is_whitespace())
+            .collect();
 
         if let Some(has_one_idx) = tokens.iter().position(|tok| *tok == "has_one") {
             if let Some(next) = tokens.get(has_one_idx + 1) {
@@ -149,7 +147,6 @@ fn has_reinit_guard(
                 }
             }
         }
-
     }
     false
 }
@@ -157,11 +154,7 @@ fn has_reinit_guard(
 /// Returns true if `field_name` is declared as a `Signer<'info>` type
 /// in the given struct. Used to verify that a `has_one` guard actually
 /// references a signer (Bug 5 fix).
-fn is_signer_field(
-    ast_hints: &[AstHint],
-    struct_name: &str,
-    field_name: &str,
-) -> bool {
+fn is_signer_field(ast_hints: &[AstHint], struct_name: &str, field_name: &str) -> bool {
     for hint in ast_hints {
         if let AstHintKind::AccountsField {
             struct_name: sn,

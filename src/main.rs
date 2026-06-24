@@ -165,11 +165,7 @@ fn cmd_scan(
     let rule_count = engine::registry::list_rule_ids().len();
     for (i, ir) in programs.iter().enumerate() {
         if verbose {
-            eprintln!(
-                "[*] Checking program {} of {}...",
-                i + 1,
-                programs.len()
-            );
+            eprintln!("[*] Checking program {} of {}...", i + 1, programs.len());
         }
         let ctx = AnalysisContext {
             ir: ir.clone(),

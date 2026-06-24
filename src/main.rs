@@ -288,6 +288,14 @@ fn cmd_explain(rule_id: &str) {
             println!("{}", "-".repeat(70));
             println!("{}", ref_url);
         }
+        if let Some(pat) = explain.detection_pattern {
+            println!("{}", "-".repeat(70));
+            println!("DETECTION PATTERN");
+            println!("{}", "-".repeat(70));
+            for line in pat.lines() {
+                println!("{}", line);
+            }
+        }
         if let Some(see_also) = explain.see_also {
             println!();
             println!("{}", "-".repeat(70));

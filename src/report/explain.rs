@@ -16,6 +16,7 @@ pub struct Explain {
     pub safe_example: &'static str,
     pub exploit_ref: Option<&'static str>,
     pub see_also: Option<&'static [&'static str]>,
+    pub detection_pattern: Option<&'static str>,
 }
 
 pub fn get_explanation(rule_id: &str) -> Option<Explain> {
@@ -52,6 +53,9 @@ invoke_signed(
 )"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#arbitrary-cpi"),
             see_also: Some(&["missing_signer", "pda_misconfig"]),
+            detection_pattern: Some(r#"invoke_signed(..., seeds: [..., user_arg, ...])
+// or
+invoke_signed(..., seeds: [..., args.nonce, ...])"#),
         }),
         "missing_balance_check" => Some(Explain {
             id: "missing_balance_check",
@@ -81,6 +85,8 @@ pub fn withdraw(ctx: &Context<Withdraw>, amount: u64) -> Result<()> {
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#signer-authorization"),
             see_also: Some(&["missing_balance_check", "missing_ownership"]),
+            detection_pattern: Some(r#"user.lamports -= amount;
+// No preceding: require!(user.lamports() >= amount, ...)"#),
         }),
         "missing_signer" => Some(Explain {
             id: "missing_signer",
@@ -113,6 +119,8 @@ pub struct WithdrawArgs<'info> {
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#signer-authorization"),
             see_also: Some(&["missing_balance_check", "missing_ownership", "pda_misconfig"]),
+            detection_pattern: Some(r#"pub user: AccountInfo<'info>  // not Signer<'info>
+// IDL: signer: false or absent"#),
         }),
         "missing_bump_seed_canonicalization" => Some(Explain {
             id: "missing_bump_seed_canonicalization",
@@ -155,6 +163,9 @@ pub struct InitializeArgs<'info> {
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#bump-seed-canonicalization"),
             see_also: Some(&["pda_misconfig", "missing_signer"]),
+            detection_pattern: Some(r#"seeds = [...], bump = user_bump
+// or
+seeds = [...], bump = args.nonce"#),
         }),
         "duplicate_mutable_accounts" => Some(Explain {
             id: "duplicate_mutable_accounts",
@@ -192,6 +203,8 @@ pub struct TransferArgs<'info> {
 // for both accounts. Can't pass the same pubkey."#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#duplicate-mutable-accounts"),
             see_also: Some(&["missing_signer", "missing_mut"]),
+            detection_pattern: Some(r#"pub a: AccountInfo<'info>,  // two or more
+pub b: AccountInfo<'info>,  // of these"#),
         }),
         "missing_ownership" => Some(Explain {
             id: "missing_ownership",
@@ -227,6 +240,8 @@ pub struct DepositArgs<'info> {
 // Attacker can't pass a fake account."#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#account-data-matching"),
             see_also: Some(&["missing_signer", "pda_misconfig"]),
+            detection_pattern: Some(r#"pub vault: AccountInfo<'info>
+// No: owner = Program::ID or System"#),
         }),
         "missing_reinit_guard" => Some(Explain {
             id: "missing_reinit_guard",
@@ -269,6 +284,9 @@ pub fn init_token(ctx: &Context<InitTokenArgs>) -> Result<()> {
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#reinitialization"),
             see_also: Some(&["missing_close_authority", "missing_signer"]),
+            detection_pattern: Some(r#"#[account(init_if_needed, ...)]
+pub state: Account<'info, State>
+// No: has_one = authority or constraint = ..."#),
         }),
         "lamports_drain" => Some(Explain {
             id: "lamports_drain",
@@ -304,6 +322,9 @@ pub fn close_token(ctx: &Context<CloseToken>) -> Result<()> {
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#closing-accounts"),
             see_also: Some(&["missing_close_authority"]),
+            detection_pattern: Some(r#"**dest.lamports.borrow_mut() += source.lamports();
+**source.lamports.borrow_mut() = 0;
+// No authority verification before drain"#),
         }),
         "missing_close_authority" => Some(Explain {
             id: "missing_close_authority",
@@ -341,6 +362,9 @@ pub struct CloseDataArgs<'info> {
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#closing-accounts"),
             see_also: Some(&["lamports_drain", "missing_signer"]),
+            detection_pattern: Some(r#"#[account(close = target)]
+pub data: Account<'info, Data>
+// target is AccountInfo, not Signer"#),
         }),
         "pda_misconfig" => Some(Explain {
             id: "pda_misconfig",
@@ -375,6 +399,8 @@ pub struct CreateVaultArgs<'info> {
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#bump-seed-canonicalization"),
             see_also: Some(&["missing_bump_seed_canonicalization", "missing_signer"]),
+            detection_pattern: Some(r#"PDA account without seeds = [...]
+// or with init but missing bump"#),
         }),
         "unsafe_arithmetic" => Some(Explain {
             id: "unsafe_arithmetic",
@@ -410,6 +436,8 @@ pub fn transfer(ctx: &Context<Transfer>, amount: u64) -> Result<()> {
 }"#,
             exploit_ref: None,
             see_also: Some(&["missing_ownership"]),
+            detection_pattern: Some(r#"from.amount -= amount;  // unchecked -, +, *, /
+to.amount += amount;     // no .checked_*()"#),
         }),
         "missing_mut" => Some(Explain {
             id: "missing_mut",
@@ -440,6 +468,8 @@ pub fn update(ctx: &Context<Update>, new_value: u64) -> Result<()> {
 }"#,
             exploit_ref: None,
             see_also: Some(&["missing_balance_check", "lamports_drain"]),
+            detection_pattern: Some(r#"#[account(mut)]  // in IDL but missing
+// or IDL: writable: false but modified"#),
         }),
         "unchecked_balance_flow" => Some(Explain {
             id: "unchecked_balance_flow",
@@ -471,6 +501,8 @@ pub fn withdraw_all(ctx: &Context<Withdraw>) -> Result<()> {
 }"#,
             exploit_ref: None,
             see_also: Some(&["unsafe_arithmetic", "missing_balance_check"]),
+            detection_pattern: Some(r#"user.lamports -= user.lamports();
+// No credit to another account or CPI"#),
         }),
         "integer_cast_truncation" => Some(Explain {
             id: "integer_cast_truncation",
@@ -511,6 +543,8 @@ pub fn transfer_amount(ctx: &Context<Transfer>, amount: u64) -> Result<()> {
 }"#,
             exploit_ref: None,
             see_also: Some(&["unsafe_arithmetic", "missing_balance_check"]),
+            detection_pattern: Some(r#"let val = amount as u32;  // u64 -> u32 cast
+// High bits silently dropped"#),
         }),
         _ => None,
     }

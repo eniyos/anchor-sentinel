@@ -15,6 +15,7 @@ pub struct Explain {
     pub vulnerable_example: &'static str,
     pub safe_example: &'static str,
     pub exploit_ref: Option<&'static str>,
+    pub see_also: Option<&'static [&'static str]>,
 }
 
 pub fn get_explanation(rule_id: &str) -> Option<Explain> {
@@ -50,6 +51,7 @@ invoke_signed(
     ],
 )"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#arbitrary-cpi"),
+            see_also: Some(&["missing_signer", "pda_misconfig"]),
         }),
         "missing_balance_check" => Some(Explain {
             id: "missing_balance_check",
@@ -78,6 +80,7 @@ pub fn withdraw(ctx: &Context<Withdraw>, amount: u64) -> Result<()> {
     Ok(())
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#signer-authorization"),
+            see_also: Some(&["missing_balance_check", "missing_ownership"]),
         }),
         "missing_signer" => Some(Explain {
             id: "missing_signer",
@@ -109,6 +112,7 @@ pub struct WithdrawArgs<'info> {
     pub vault: Account<'info, Vault>,
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#signer-authorization"),
+            see_also: Some(&["missing_balance_check", "missing_ownership", "pda_misconfig"]),
         }),
         "missing_bump_seed_canonicalization" => Some(Explain {
             id: "missing_bump_seed_canonicalization",
@@ -150,6 +154,7 @@ pub struct InitializeArgs<'info> {
     pub user: Signer<'info>,
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#bump-seed-canonicalization"),
+            see_also: Some(&["pda_misconfig", "missing_signer"]),
         }),
         "duplicate_mutable_accounts" => Some(Explain {
             id: "duplicate_mutable_accounts",
@@ -186,6 +191,7 @@ pub struct TransferArgs<'info> {
 // Anchor's Account<'info, T> type-checks uniqueness
 // for both accounts. Can't pass the same pubkey."#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#duplicate-mutable-accounts"),
+            see_also: Some(&["missing_signer", "missing_mut"]),
         }),
         "missing_ownership" => Some(Explain {
             id: "missing_ownership",
@@ -220,6 +226,7 @@ pub struct DepositArgs<'info> {
 // Only SystemAccount (owned by system_program) accepted
 // Attacker can't pass a fake account."#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#account-data-matching"),
+            see_also: Some(&["missing_signer", "pda_misconfig"]),
         }),
         "missing_reinit_guard" => Some(Explain {
             id: "missing_reinit_guard",
@@ -261,6 +268,7 @@ pub fn init_token(ctx: &Context<InitTokenArgs>) -> Result<()> {
     Ok(())
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#reinitialization"),
+            see_also: Some(&["missing_close_authority", "missing_signer"]),
         }),
         "lamports_drain" => Some(Explain {
             id: "lamports_drain",
@@ -295,6 +303,7 @@ pub fn close_token(ctx: &Context<CloseToken>) -> Result<()> {
     Ok(())
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#closing-accounts"),
+            see_also: Some(&["missing_close_authority"]),
         }),
         "missing_close_authority" => Some(Explain {
             id: "missing_close_authority",
@@ -331,6 +340,7 @@ pub struct CloseDataArgs<'info> {
     pub authority: Signer<'info>,  // must sign
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#closing-accounts"),
+            see_also: Some(&["lamports_drain", "missing_signer"]),
         }),
         "pda_misconfig" => Some(Explain {
             id: "pda_misconfig",
@@ -364,6 +374,7 @@ pub struct CreateVaultArgs<'info> {
     pub system_program: Program<'info, System>,
 }"#,
             exploit_ref: Some("https://github.com/coral-xyz/sealevel-attacks#bump-seed-canonicalization"),
+            see_also: Some(&["missing_bump_seed_canonicalization", "missing_signer"]),
         }),
         "unsafe_arithmetic" => Some(Explain {
             id: "unsafe_arithmetic",
@@ -398,6 +409,7 @@ pub fn transfer(ctx: &Context<Transfer>, amount: u64) -> Result<()> {
     Ok(())
 }"#,
             exploit_ref: None,
+            see_also: Some(&["missing_ownership"]),
         }),
         "missing_mut" => Some(Explain {
             id: "missing_mut",
@@ -427,6 +439,7 @@ pub fn update(ctx: &Context<Update>, new_value: u64) -> Result<()> {
     Ok(())
 }"#,
             exploit_ref: None,
+            see_also: Some(&["missing_balance_check", "lamports_drain"]),
         }),
         "unchecked_balance_flow" => Some(Explain {
             id: "unchecked_balance_flow",
@@ -457,6 +470,7 @@ pub fn withdraw_all(ctx: &Context<Withdraw>) -> Result<()> {
     Ok(())
 }"#,
             exploit_ref: None,
+            see_also: Some(&["unsafe_arithmetic", "missing_balance_check"]),
         }),
         "integer_cast_truncation" => Some(Explain {
             id: "integer_cast_truncation",
@@ -496,6 +510,7 @@ pub fn transfer_amount(ctx: &Context<Transfer>, amount: u64) -> Result<()> {
     Ok(())
 }"#,
             exploit_ref: None,
+            see_also: Some(&["unsafe_arithmetic", "missing_balance_check"]),
         }),
         _ => None,
     }

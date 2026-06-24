@@ -288,6 +288,15 @@ fn cmd_explain(rule_id: &str) {
             println!("{}", "-".repeat(70));
             println!("{}", ref_url);
         }
+        if let Some(see_also) = explain.see_also {
+            println!();
+            println!("{}", "-".repeat(70));
+            println!("SEE ALSO");
+            println!("{}", "-".repeat(70));
+            for rule in see_also {
+                println!("  • `sentinel explain {}`", rule);
+            }
+        }
         println!();
         println!("{}", "=".repeat(70));
         println!();

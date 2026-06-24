@@ -47,10 +47,8 @@ impl Rule for PdaMisconfig {
                 ..
             } = &hint.kind
             {
-                // Combine all `#[account(...)]` attrs for this field.
                 let joined: String = constraints.join(", ");
 
-                // Rule 1: seeds present, no bump.
                 if joined.contains("seeds") && !joined.contains("bump") {
                     seen_fields.insert(field_name.clone());
                     let mut b = Finding::builder(
@@ -71,17 +69,11 @@ impl Rule for PdaMisconfig {
                     continue;
                 }
 
-                // Rule 2: bump set to a non-canonical expression.
                 if let Some(idx) = joined.find("bump") {
                     let after = &joined[idx + "bump".len()..];
-                    // Skip "bumps" (plural — `bump = ctx.bumps.foo` is OK).
                     if after.starts_with('s') {
                         continue;
                     }
-                    // The valid bare-bump forms are:
-                    //   `bump,`          — standalone canonical bump
-                    //   `bump = `        — implicit canonical bump
-                    // Anything else is `bump = <expr>` where expr is the trap.
                     if let Some(eq_idx) = after.find('=') {
                         let expr = after[eq_idx + 1..]
                             .trim_start()
@@ -89,10 +81,6 @@ impl Rule for PdaMisconfig {
                             .trim();
                         if !expr.is_empty() && expr != "ctx.bumps" && !expr.starts_with("ctx.bumps")
                         {
-                            // Look for the case where the RHS is a *plain
-                            // identifier* matching a struct field. That's the
-                            // user-supplied bump (`bump = bump` where `bump`
-                            // is a function argument).
                             if is_plain_ident(expr) {
                                 seen_fields.insert(field_name.clone());
                                 let mut b = Finding::builder(
@@ -117,7 +105,6 @@ impl Rule for PdaMisconfig {
             }
         }
 
-        // Rule 3: IDL-level empty PDA seeds.
         for ix in &ctx.ir.instructions {
             for acct in &ix.accounts {
                 if let Some(pda) = &acct.pda {

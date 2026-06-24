@@ -29,7 +29,7 @@
 use anyhow::Result;
 use std::collections::HashSet;
 
-use crate::engine::{AnalysisContext, AstHintKind, Finding, Layer, Rule, Severity};
+use crate::engine::{AnalysisContext, AstHintKind, AstHint, Finding, Layer, Rule, Severity};
 
 pub struct MissingReinitGuard;
 
@@ -49,8 +49,6 @@ impl Rule for MissingReinitGuard {
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         let mut out = Vec::new();
-        // Dedupe per (struct, field) — we might re-encounter the
-        // same field via IDL + AST hints.
         let mut seen: HashSet<(String, String)> = HashSet::new();
 
         for hint in &ctx.ast_hints {
@@ -61,7 +59,6 @@ impl Rule for MissingReinitGuard {
                 ..
             } = &hint.kind
             {
-                // Step 1: does this field declare `init_if_needed`?
                 if !has_init_if_needed(constraints) {
                     continue;
                 }
@@ -70,10 +67,7 @@ impl Rule for MissingReinitGuard {
                     continue;
                 }
 
-                // Step 2: is there a reinitialization guard?
-                //   - has_one = <authority> on the same field, OR
-                //   - constraint = <expr> referencing an authority field
-                if has_reinit_guard(constraints) {
+                if has_reinit_guard(constraints, &ctx.ast_hints, struct_name) {
                     continue;
                 }
 
@@ -119,26 +113,71 @@ fn has_init_if_needed(constraints: &[String]) -> bool {
     false
 }
 
-/// True if the field's `#[account(...)]` attrs include either
-/// `has_one = <ident>` or a `constraint = <expr>` expression. Either
-/// pattern can serve as a reinit guard.
-fn has_reinit_guard(constraints: &[String]) -> bool {
+/// True if the field's `#[account(...)]` attrs include either:
+///   - `has_one = <authority>` on the **same field**, where `<authority>`
+///     resolves to a `Signer` type in the same struct, OR
+///   - `constraint = <expr>` (must have '=') — bare `constraint` without
+///     '=' is a no-op in Anchor and does NOT guard against reinit.
+///
+/// `realloc` alone is NOT a guard — it only controls whether data is zeroed
+/// on reallocation. It must be paired with a `constraint = ...` expression
+/// that verifies the caller's authority.
+fn has_reinit_guard(
+    constraints: &[String],
+    ast_hints: &[AstHint],
+    struct_name: &str,
+) -> bool {
     for c in constraints {
-        if c.split(|ch: char| ch == ',' || ch.is_whitespace())
-            .any(|tok| tok == "has_one")
-        {
-            return true;
+        let tokens: Vec<&str> = c.split(|ch: char| ch == ',' || ch.is_whitespace()).collect();
+
+        if let Some(has_one_idx) = tokens.iter().position(|tok| *tok == "has_one") {
+            if let Some(next) = tokens.get(has_one_idx + 1) {
+                if *next == "=" {
+                    if let Some(target) = tokens.get(has_one_idx + 2) {
+                        if is_signer_field(ast_hints, struct_name, target) {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
-        if c.split(|ch: char| ch == ',' || ch.is_whitespace())
-            .any(|tok| tok.starts_with("constraint") || tok == "realloc")
+
+        if let Some(constraint_idx) = tokens.iter().position(|tok| *tok == "constraint") {
+            if let Some(next) = tokens.get(constraint_idx + 1) {
+                if *next == "=" {
+                    return true;
+                }
+            }
+        }
+
+    }
+    false
+}
+
+/// Returns true if `field_name` is declared as a `Signer<'info>` type
+/// in the given struct. Used to verify that a `has_one` guard actually
+/// references a signer (Bug 5 fix).
+fn is_signer_field(
+    ast_hints: &[AstHint],
+    struct_name: &str,
+    field_name: &str,
+) -> bool {
+    for hint in ast_hints {
+        if let AstHintKind::AccountsField {
+            struct_name: sn,
+            field_name: fn_,
+            ty,
+            ..
+        } = &hint.kind
         {
-            // `constraint = ...` or `realloc::zero = false` etc.
-            // We accept any constraint expression as a guard —
-            // false positives are possible if the constraint doesn't
-            // actually reference an authority, but that's better than
-            // missing real reinit bugs. The has_one path is the
-            // recommended pattern; constraint is the escape hatch.
-            return true;
+            if sn == struct_name && fn_ == field_name {
+                // Match common Signer type patterns.
+                let ty_lower = ty.to_lowercase();
+                return ty_lower.contains("signer")
+                    || ty_lower.contains("signer<'info>")
+                    || ty_lower.contains("account<signer")
+                    || ty_lower == "signer";
+            }
         }
     }
     false

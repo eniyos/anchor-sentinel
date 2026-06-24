@@ -39,7 +39,6 @@ impl Rule for MissingMut {
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        // Build a set of (field_name) where the AST has `#[account(mut)]`.
         let mut ast_mut: HashSet<String> = HashSet::new();
         let hint_index = field_hint_index(ctx);
         for hint in &ctx.ast_hints {
@@ -62,9 +61,6 @@ impl Rule for MissingMut {
                     continue;
                 }
                 if ast_mut.contains(&acct.name) {
-                    // IDL is stale relative to the source — that's a
-                    // separate `id_drift` rule we'd add later. For now we
-                    // trust the source.
                     continue;
                 }
                 let lname = acct.name.to_ascii_lowercase();

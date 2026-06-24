@@ -37,6 +37,10 @@ pub enum Command {
         /// Minimum severity to report. Lower-severity findings are hidden.
         #[arg(long, value_enum)]
         min_severity: Option<MinSeverity>,
+
+        /// Show progress and timing for each scan phase.
+        #[arg(short, long)]
+        verbose: bool,
     },
 
     /// List all registered rules.

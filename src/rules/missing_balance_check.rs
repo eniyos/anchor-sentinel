@@ -36,13 +36,11 @@ impl Rule for MissingBalanceCheck {
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        // Collect debits and checks grouped by (file, fn_name).
-        // `(account, amount_expr, seq, hint_ref)` — a lamports-debit operation.
         type DebitEntry<'a> = (String, String, usize, &'a AstHint);
         let mut debits: HashMap<FnKey, Vec<DebitEntry<'_>>> = HashMap::new();
         let mut checks: HashMap<FnKey, Vec<(String, usize)>> = HashMap::new();
 
-        let mut current_fn: Option<FnKey> = None; // (file, fn_name)
+        let mut current_fn: Option<FnKey> = None;
         for hint in &ctx.ast_hints {
             if let AstHintKind::InstructionHandler { fn_name, .. } = &hint.kind {
                 current_fn = Some((hint.file.clone(), fn_name.clone()));
@@ -85,8 +83,6 @@ impl Rule for MissingBalanceCheck {
                 .unwrap_or(&[]);
 
             for (account, amount, debit_seq, debit_hint) in entries {
-                // Check if any balance check precedes this debit for the same
-                // account, or a generic check (empty account name) exists before it.
                 let has_guard = fn_checks.iter().any(|(check_acct, check_seq)| {
                     *check_seq < *debit_seq && (check_acct == account || check_acct.is_empty())
                 });
@@ -115,8 +111,6 @@ impl Rule for MissingBalanceCheck {
             }
         }
 
-        // Sort deterministically so snapshots are stable (HashMap iteration
-        // is non-deterministic).
         out.sort_by(|a, b| {
             (&a.instruction, &a.account, a.line).cmp(&(&b.instruction, &b.account, b.line))
         });

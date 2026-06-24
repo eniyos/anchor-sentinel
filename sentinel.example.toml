@@ -3,7 +3,8 @@
 
 # Paths to exclude from scanning.
 # Supports exact paths and glob patterns (e.g., "tests/*")
-exclude = [
+[exclude]
+paths = [
     "tests",
     "migrations",
     "programs/test",
@@ -11,7 +12,8 @@ exclude = [
 
 # Default rules to ignore.
 # These can still be overridden with --ignore on the CLI.
-ignore = [
+[ignore]
+rules = [
     "missing_mut",
     "unchecked_balance_flow",
 ]
@@ -19,4 +21,5 @@ ignore = [
 # Minimum severity to report by default.
 # CLI --min-severity takes precedence over this.
 # Options: info, low, medium, high, critical
-min_severity = "medium"
+[severity]
+min = "medium"

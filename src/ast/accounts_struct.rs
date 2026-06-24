@@ -47,7 +47,6 @@ impl<'ast, 'a> Visit<'ast> for AccountsStructVisitor<'a> {
                 visit_accounts_struct(s, &mut self.out.hints);
             }
         }
-        // Keep walking — nested items are unusual but we don't want to miss them.
         visit::visit_item(self, i);
     }
 }
@@ -77,7 +76,7 @@ fn visit_accounts_struct(s: &ItemStruct, hints: &mut Vec<RawHint>) {
     let struct_name = s.ident.to_string();
     let named = match &s.fields {
         Fields::Named(n) => &n.named,
-        _ => return, // tuple/unit structs aren't used for `#[derive(Accounts)]`
+        _ => return,
     };
     for field in named {
         let field_name = field

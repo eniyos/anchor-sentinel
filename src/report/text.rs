@@ -20,10 +20,6 @@ use colored::*;
 use crate::engine::{Finding, Severity};
 use crate::report::tty;
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Public types: what the caller hands us.
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 /// Per-stage durations measured by `main.rs` around the four scan
 /// phases, plus a wall-clock total. All fields are wall-clock from
 /// the start of the corresponding phase (or the whole scan, for
@@ -47,11 +43,6 @@ pub struct ScanReport<'a> {
     pub rules_executed: usize,
     pub findings: &'a [Finding],
 }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Risk score model. See the plan: penalty = crit*25 + high*8 + med*3 + low*1,
-// score = max(0, 100 - penalty). Critical findings always override to BLOCKED.
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 mod risk {
     /// Compute the 0..=100 risk score from severity counts.
@@ -167,10 +158,6 @@ mod risk {
     }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Section 1 — Hero
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 /// Print the scan opener: a brand line, a tagline, and the target
 /// path. Three lines plus a blank. No box, no animation.
 pub fn print_hero(project: &str, config: &crate::config::Config) {
@@ -193,29 +180,25 @@ pub fn print_hero(project: &str, config: &crate::config::Config) {
         println!("{}  {}", "Target:".dimmed(), project);
 
         // Show config info if loaded
-        if !config.exclude.is_empty() {
-            println!("{}  {} patterns", "Exclude:".dimmed(), config.exclude.len());
+        if !config.exclude.paths.is_empty() {
+            println!("{}  {} patterns", "Exclude:".dimmed(), config.exclude.paths.len());
         }
-        if !config.ignore.is_empty() {
-            println!("{}  {} rules", "Ignore:".dimmed(), config.ignore.len());
+        if !config.ignore.rules.is_empty() {
+            println!("{}  {} rules", "Ignore:".dimmed(), config.ignore.rules.len());
         }
     } else {
         println!("Anchor Sentinel v{}", env!("CARGO_PKG_VERSION"));
         println!("Static Security Analysis for Solana Programs");
         println!();
         println!("Target:  {}", project);
-        if !config.exclude.is_empty() {
-            println!("Exclude:  {} patterns", config.exclude.len());
+        if !config.exclude.paths.is_empty() {
+            println!("Exclude:  {} patterns", config.exclude.paths.len());
         }
-        if !config.ignore.is_empty() {
-            println!("Ignore:   {} rules", config.ignore.len());
+        if !config.ignore.rules.is_empty() {
+            println!("Ignore:   {} rules", config.ignore.rules.len());
         }
     }
 }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Section 2 — Pipeline
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /// Print the 5-stage pipeline status with per-stage durations. The
 /// `✓` is green; labels are plain; durations are dim and right-aligned
@@ -262,10 +245,6 @@ pub fn print_pipeline(timings: &ScanTimings) {
     }
     println!();
 }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Section 3 — Security Overview
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /// Print the security overview block: per-severity counts, the risk
 /// score (with grade), and the verdict. The label column is
@@ -319,10 +298,6 @@ fn label_string_colored(label: &str) -> String {
     }
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Section 4 — Findings
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 /// Print all findings, grouped by severity (Critical → Info) and
 /// sorted by location within each group. A separator line of `─` is
 /// drawn between findings within a group; a blank line separates
@@ -339,9 +314,6 @@ pub fn print_findings(findings: &[Finding]) {
         return;
     }
 
-    // Group by severity in the spec's order: Critical, High, Medium, Low, Info.
-    // We use a single pass + sorted-buckets approach so the output
-    // is deterministic regardless of rule execution order.
     let order = [
         Severity::Critical,
         Severity::High,
@@ -354,7 +326,6 @@ pub fn print_findings(findings: &[Finding]) {
         if group.is_empty() {
             continue;
         }
-        // Sort by (file, line, column) — the natural read order.
         group.sort_by(|a, b| {
             a.file
                 .as_deref()
@@ -381,7 +352,6 @@ pub fn print_findings(findings: &[Finding]) {
         for (i, f) in group.iter().enumerate() {
             print_finding(f);
             if i + 1 < group.len() {
-                // Separator between findings (not after the last one).
                 println!("{}", "─".repeat(60).dimmed());
             }
         }
@@ -389,17 +359,11 @@ pub fn print_findings(findings: &[Finding]) {
     }
 }
 
-/// Render a single finding as the multi-line block shown in the CLI.
-/// Uses the `●` glyph (severity-colored) as the bullet, label/value
-/// pairs separated by blank lines, and indentation under each label.
 fn print_finding(f: &Finding) {
     let sev_color = severity_color(f.severity);
     let dim = |s: &str| s.dimmed().to_string();
     let bullet_colored = "●".color(sev_color).bold().to_string();
 
-    // First line: bullet + rule name, optionally with instruction
-    // suffix. Rule name is in the severity color; the instruction
-    // parenthetical is dim.
     let header = if let Some(ix) = &f.instruction {
         format!(
             "{bullet_colored}  {}{}",
@@ -411,7 +375,6 @@ fn print_finding(f: &Finding) {
     };
     println!("{header}");
 
-    // Location
     if let Some(file) = &f.file {
         let loc = if let Some(line) = f.line {
             let col = f.column.map(|c| format!(":{c}")).unwrap_or_default();
@@ -446,10 +409,6 @@ fn print_finding(f: &Finding) {
     // Trailing newline is added by the caller (separator or blank line).
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Section 5 — Statistics
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 /// Print a compact 4-row statistics block. Labels are left-padded to
 /// 22 chars, numbers are right-aligned. No header, no border.
 pub fn print_statistics(report: &ScanReport) {
@@ -470,10 +429,6 @@ pub fn print_statistics(report: &ScanReport) {
     }
     println!();
 }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Section 6 — Verdict (the climax)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /// Print the final verdict as the visual climax: the headline in
 /// bold + severity color, a blank line, and a one-sentence follow-up.
@@ -496,10 +451,6 @@ pub fn print_verdict(findings: &[Finding]) {
         println!("{follow}");
     }
 }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Helpers
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /// Tally findings into (critical, high, medium, low) — info is
 /// excluded from the score (spec lists only those four). The
@@ -579,10 +530,6 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
     out
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// `sentinel rules` — cargo-style table (no box drawing).
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 /// Print the `sentinel rules` listing in cargo style: a header line
 /// with the brand + count, a blank line, and an aligned table of
 /// rows. No `┌─┬─┐` borders. The `Layer` field comes from the
@@ -605,23 +552,16 @@ pub fn print_rules_table() {
     println!();
 
     // Cargo-style columns: `ID RULE SEVERITY LAYER`. No `│` separators.
-    // Column widths picked to accommodate the longest rule id
-    // ("missing_bump_seed_canonicalization" = 33 chars).
     const ID_W: usize = 3;
     const NAME_W: usize = 38;
     const SEV_W: usize = 10;
     const LAYER_W: usize = 8;
 
-    // The header row is plain text in both TTY and non-TTY modes —
-    // column alignment is what matters here, not color. The cargo-style
-    // table is intentionally monochrome so it reads the same in logs
-    // and on a terminal.
     println!(
         "{:<ID_W$}  {:<NAME_W$}  {:<SEV_W$}  {:<LAYER_W$}",
         "ID", "Rule", "Severity", "Layer"
     );
 
-    // Sort by severity (Critical first) then by id alphabetically.
     let mut sorted = rules;
     sorted.sort_by(|a, b| {
         let ord = |s: &Severity| match s {
@@ -665,10 +605,6 @@ pub fn print_rules_table() {
     println!();
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Unit tests
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 #[cfg(test)]
 mod tests {
     use super::risk;
@@ -685,13 +621,11 @@ mod tests {
 
     #[test]
     fn score_two_crit_three_high_two_medium_is_20() {
-        // (2*25) + (3*8) + (2*3) = 50 + 24 + 6 = 80 → 100 - 80 = 20.
         assert_eq!(risk::score(2, 3, 2, 0), 20);
     }
 
     #[test]
     fn score_floors_at_zero() {
-        // 4 critical saturates the penalty past 100; score clamps.
         assert_eq!(risk::score(5, 10, 5, 0), 0);
     }
 
@@ -711,8 +645,6 @@ mod tests {
 
     #[test]
     fn critical_always_blocks_even_at_high_score() {
-        // 1 critical with no others: penalty 25, score 75.
-        // Verdict must still be Blocked (override).
         let (v, label) = risk::verdict(1, 0, 0, 0);
         assert_eq!(v, risk::Verdict::Blocked);
         assert_eq!(label, "DEPLOYMENT BLOCKED");
@@ -720,19 +652,12 @@ mod tests {
 
     #[test]
     fn critical_override_survives_zero_penalty_other() {
-        // 3 critical, 0 of everything else: penalty 75, score 25.
-        // Without override this would be DEPLOYMENT BLOCKED anyway,
-        // but we test the override path explicitly.
         let (v, _) = risk::verdict(3, 0, 0, 0);
         assert_eq!(v, risk::Verdict::Blocked);
     }
 
     #[test]
     fn high_only_at_89_is_review_required() {
-        // Penalty for 11 high: 11*8 = 88 → score 12. Verdict is
-        // blocked, not review. So at the 50-89 boundary, what
-        // produces a review? 1 crit=75 (blocked), 0 crit + 6 high=52
-        // (review). 6 high × 8 = 48 → 100-48 = 52.
         let (v, label) = risk::verdict(0, 6, 0, 0);
         assert_eq!(v, risk::Verdict::ReviewRequired);
         assert_eq!(label, "DEPLOYMENT REVIEW REQUIRED");
@@ -740,7 +665,6 @@ mod tests {
 
     #[test]
     fn no_critical_high_or_above_means_approved() {
-        // 0 critical, 0 high, 1 medium, 1 low: penalty 4 → 96 → A → Approved.
         let (v, label) = risk::verdict(0, 0, 1, 1);
         assert_eq!(v, risk::Verdict::Approved);
         assert_eq!(label, "DEPLOYMENT APPROVED");

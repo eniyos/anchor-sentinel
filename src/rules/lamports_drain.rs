@@ -35,8 +35,6 @@ impl Rule for LamportsDrain {
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        // Collect zeros and auth checks grouped by (file, fn_name).
-        // `(account, seq, hint_ref)` — a lamports-zero operation.
         type ZeroEntry<'a> = (String, usize, &'a AstHint);
         let mut zeros: HashMap<FnKey, Vec<ZeroEntry<'_>>> = HashMap::new();
         let mut auth_checks: HashMap<FnKey, Vec<usize>> = HashMap::new();
@@ -84,7 +82,6 @@ impl Rule for LamportsDrain {
 
             for (account, zero_seq, zero_hint) in entries {
                 let has_auth = auth_seqs.iter().any(|s| *s < *zero_seq);
-
                 if !has_auth && !has_idl_signer {
                     let mut b = Finding::builder(
                         self.id(),
@@ -107,8 +104,6 @@ impl Rule for LamportsDrain {
             }
         }
 
-        // Sort findings deterministically by (instruction, account, line) so
-        // snapshots are stable across runs (HashMap iteration is non-deterministic).
         out.sort_by(|a, b| {
             (&a.instruction, &a.account, a.line).cmp(&(&b.instruction, &b.account, b.line))
         });

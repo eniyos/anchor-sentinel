@@ -34,9 +34,6 @@ impl Rule for UncheckedBalanceFlow {
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        // Collect AST-level credits, debits, and CPI targets per instruction handler.
-        // We store `(account, amount_expr, seq)` for credits so we can verify
-        // ordering: credits should generally follow debits in the same handler.
         let mut credits: HashMap<String, Vec<(String, String, usize)>> = HashMap::new();
         let mut debits: HashMap<String, Vec<(String, usize)>> = HashMap::new();
         let mut cpi_ops: HashMap<String, Vec<String>> = HashMap::new(); // target names
@@ -81,7 +78,6 @@ impl Rule for UncheckedBalanceFlow {
 
         let mut out = Vec::new();
         for ix in &ctx.ir.instructions {
-            // IDL heuristic: find writable non-signer accounts (potential lamports sources).
             let writable_non_signers: Vec<_> = ix
                 .accounts
                 .iter()
@@ -96,10 +92,7 @@ impl Rule for UncheckedBalanceFlow {
             let ix_debits = debits.get(&ix.name).map(|v| v.len()).unwrap_or(0);
             let ix_cpi = cpi_ops.get(&ix.name).map(|v| v.len()).unwrap_or(0);
 
-            // If there are lamports debits but no matching credits and no CPI,
-            // lamports may have leaked.
             if ix_debits > 0 && ix_credits == 0 && ix_cpi == 0 {
-                // Check if there's any rent-exempt check for this instruction.
                 let has_rent_check = ctx.ast_hints.iter().any(|h| {
                     if let AstHintKind::BalanceCheck {
                         check_type,
@@ -141,7 +134,6 @@ impl Rule for UncheckedBalanceFlow {
                     );
                 }
             } else if ix_debits > 0 && ix_credits == 0 && ix_cpi > 0 {
-                // Debits present with CPI but no explicit credit — flag for manual review.
                 let targets = cpi_ops.get(&ix.name).unwrap();
                 let account_names: Vec<&str> = writable_non_signers
                     .iter()
@@ -164,7 +156,6 @@ impl Rule for UncheckedBalanceFlow {
                     .build(),
                 );
             } else if ix_debits > 0 && ix_credits > 0 {
-                // Debits and credits exist — check for rent-exempt minimum.
                 let has_rent_check = ctx.ast_hints.iter().any(|h| {
                     if let AstHintKind::BalanceCheck { check_type, .. } = &h.kind {
                         check_type.contains("rent") || check_type.contains("min")

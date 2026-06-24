@@ -34,7 +34,6 @@ pub fn load(project: &Path, exclude_patterns: &[String]) -> Result<LoadedProject
 
     let mut loaded = LoadedProject::new(project.to_path_buf());
 
-    // Anchor conventionally puts IDLs at <project>/target/idl/*.json.
     if let Ok(idls) = idl::discover_idl_files(project) {
         loaded.idl_files = idls
             .into_iter()
@@ -42,7 +41,6 @@ pub fn load(project: &Path, exclude_patterns: &[String]) -> Result<LoadedProject
             .collect();
     }
 
-    // And programs at <project>/programs/*/src/lib.rs.
     let programs_dir = project.join("programs");
     if programs_dir.is_dir() {
         for entry in WalkDir::new(&programs_dir)

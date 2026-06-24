@@ -31,7 +31,6 @@ pub fn load_idl(path: &Path) -> Result<ProgramIr> {
 /// Build a `ProgramIr` from a raw `serde_json::Value`, auto-detecting the
 /// IDL dialect.
 pub fn from_value(json: serde_json::Value, source_path: &str) -> Result<ProgramIr> {
-    // Check for v0.31+ format: has metadata, no top-level version
     if json.get("metadata").is_some() && json.get("version").is_none() {
         let parsed: v31::IdlFile = serde_json::from_value(json)
             .with_context(|| format!("deserializing IDL (v31) from {source_path}"))?;
@@ -60,7 +59,6 @@ pub fn from_value(json: serde_json::Value, source_path: &str) -> Result<ProgramI
 }
 
 fn detect_version(version_str: &str) -> IdlVersion {
-    // Strip a leading "0." and parse the minor.
     let minor = version_str
         .strip_prefix("0.")
         .and_then(|s| s.split('.').next())
@@ -93,7 +91,6 @@ fn convert_v31(idl: v31::IdlFile, source_path: &str) -> ProgramIr {
                                 .seeds
                                 .into_iter()
                                 .map(|s| {
-                                    // Convert byte array to string (e.g., [97, 112, 105] -> "api")
                                     let value = s.value.and_then(|v| match v {
                                         serde_json::Value::Array(arr) => {
                                             let bytes: Vec<u8> = arr
@@ -467,7 +464,6 @@ mod tests {
 
     #[test]
     fn v30_optional_is_signer_field_falls_back() {
-        // Some IDL generators omit `writable/signer` and use `isMut/isSigner`.
         let v = json!({
             "version": "0.30.1",
             "name": "demo",

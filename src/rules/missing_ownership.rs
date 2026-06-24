@@ -34,7 +34,6 @@ impl Rule for MissingOwnership {
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        // Field types that already imply an ownership check at runtime.
         let mut ast_properly_typed: HashSet<String> = HashSet::new();
         let hint_index = field_hint_index(ctx);
         for hint in &ctx.ast_hints {
@@ -55,7 +54,6 @@ impl Rule for MissingOwnership {
                     continue;
                 }
                 if ast_properly_typed.contains(&acct.name) {
-                    // AST shows `Account<…>` or `Program<…>` — already safe.
                     continue;
                 }
                 let lname = acct.name.to_ascii_lowercase();

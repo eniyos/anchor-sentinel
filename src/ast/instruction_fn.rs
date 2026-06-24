@@ -120,14 +120,6 @@ fn visit_handler_fn_impl(f: &ImplItemFn, struct_name: &str, hints: &mut Vec<RawH
     visitor.visit_block(&f.block);
 }
 
-/// Inner visitor: scans expressions in `#[program]` function bodies for:
-/// - unchecked arithmetic (existing)
-/// - lamports debit/credit via compound assignment
-/// - lamports comparison guards
-/// - lamports zeroed assignments
-/// - `set_lamports(0)` method calls
-/// - `require!` / `require_gte!` macro invocations
-/// - `invoke` / `invoke_signed` CPI calls
 struct BalanceVisitor<'a> {
     hints: &'a mut Vec<RawHint>,
     seq_counter: usize,
@@ -161,7 +153,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
     }
 
     fn visit_expr_binary(&mut self, e: &'ast ExprBinary) {
-        // Existing: unchecked arithmetic on integer types.
         if let Some(op) = match e.op {
             BinOp::Add(_) => Some("+"),
             BinOp::Sub(_) => Some("-"),
@@ -198,7 +189,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
             }
         }
 
-        // NEW: Compound assignment `+=` / `-=` on lamports accessors.
         match e.op {
             BinOp::SubAssign(_) => {
                 if let Some((account, amount)) = extract_lamports_compound(&e.left, &e.right) {
@@ -229,7 +219,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
             _ => {}
         }
 
-        // NEW: Comparison operators as balance guards when they involve lamports.
         match e.op {
             BinOp::Ge(_) | BinOp::Le(_) | BinOp::Gt(_) | BinOp::Lt(_) => {
                 if let Some((account, check_type)) = extract_lamports_comparison(e) {
@@ -251,10 +240,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
     }
 
     fn visit_expr_cast(&mut self, e: &'ast ExprCast) {
-        // `as` cast between integer types. The `integer_cast_truncation`
-        // rule fires only when the destination is narrower than the source
-        // (silent truncation); widening casts are emitted for completeness
-        // so future rules can reuse the hint.
         let from_ty = expr_type_name(&e.expr);
         let to_ty = type_name(&e.ty);
         if (is_int_type(&from_ty) || looks_like_int(&from_ty))
@@ -284,7 +269,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
 
     fn visit_expr_method_call(&mut self, e: &'ast syn::ExprMethodCall) {
         let method = e.method.to_string();
-        // `set_lamports(0)` — explicit lamports zeroing.
         if method == "set_lamports" {
             if let Some(first_arg) = e.args.first() {
                 if is_zero_literal(first_arg) {
@@ -304,9 +288,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
     }
 
     fn visit_expr_call(&mut self, e: &'ast ExprCall) {
-        // Function-form `invoke_signed(&ix, accounts, &[...seeds...])`.
-        // We also catch `solana_program::program::invoke_signed(...)` and
-        // any other path that ends in `invoke_signed`.
         let path_str = expr_path_name(&e.func);
         if path_str.as_deref().is_some_and(is_invoke_signed_path) {
             let target = "invoke".to_string();
@@ -319,8 +300,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
                 },
                 start,
             });
-            // The function call's 3rd argument is the seeds expression.
-            // We reuse the same classifier that handles the macro form.
             let (seeds, summary) = match e.args.iter().nth(2) {
                 Some(arg) => classify_seed_argument(arg),
                 None => (crate::engine::SignerSeedClass::Absent, String::new()),
@@ -340,7 +319,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
 
     fn visit_expr_macro(&mut self, e: &'ast syn::ExprMacro) {
         let mac_path = e.mac.path.to_token_stream().to_string().replace(' ', "");
-        // `require!`, `require_gte!`, `require_eq!` as balance/authorization checks.
         if mac_path == "require"
             || mac_path == "require_gte"
             || mac_path == "require_eq"
@@ -362,7 +340,6 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
                 });
             }
         }
-        // `invoke` / `invoke_signed` CPI detection.
         if mac_path.ends_with("invoke")
             || mac_path.ends_with("invoke_signed")
             || mac_path.ends_with("invoke::invoke")
@@ -399,11 +376,8 @@ impl<'ast, 'a> Visit<'ast> for BalanceVisitor<'a> {
     }
 }
 
-/// Handle macro statements (syn 2.0 parses `require!(...)` as `Stmt::Macro`,
-/// not `Stmt::Expr(Expr::Macro)`).
 fn visit_stmt_macro(visitor: &mut BalanceVisitor, sm: &syn::StmtMacro) {
     let mac_path = sm.mac.path.to_token_stream().to_string().replace(' ', "");
-    // `require!`, `require_gte!`, `require_eq!` as balance/authorization checks.
     if mac_path == "require"
         || mac_path == "require_gte"
         || mac_path == "require_eq"
@@ -458,8 +432,6 @@ fn visit_stmt_macro(visitor: &mut BalanceVisitor, sm: &syn::StmtMacro) {
     }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────
-
 /// Detect `account.lamports() -= amount` or `**account.try_borrow_mut_lamports()? -= amount`.
 fn extract_lamports_compound(left: &Expr, right: &Expr) -> Option<(String, String)> {
     if is_lamports_dereference_mut(left) || is_lamports_method_call(left) {
@@ -471,7 +443,6 @@ fn extract_lamports_compound(left: &Expr, right: &Expr) -> Option<(String, Strin
     None
 }
 
-/// Detect comparison involving lamports accessors.
 fn extract_lamports_comparison(e: &ExprBinary) -> Option<(String, String)> {
     let op_str = match e.op {
         BinOp::Ge(_) => "gte",
@@ -489,7 +460,6 @@ fn extract_lamports_comparison(e: &ExprBinary) -> Option<(String, String)> {
     None
 }
 
-/// Detect `**account.lamports()? = 0` or `account.set_lamports(0)` via `=`.
 fn extract_lamports_zero_assign(left: &Expr, right: &Expr) -> Option<String> {
     if !is_zero_literal(right) {
         return None;
@@ -503,7 +473,6 @@ fn extract_lamports_zero_assign(left: &Expr, right: &Expr) -> Option<String> {
     None
 }
 
-/// Is the expression a literal `0` (with or without type suffix)?
 fn is_zero_literal(e: &Expr) -> bool {
     if let Expr::Lit(l) = e {
         if let syn::Lit::Int(li) = &l.lit {
@@ -513,13 +482,10 @@ fn is_zero_literal(e: &Expr) -> bool {
     false
 }
 
-/// Is this expression a lamports accessor: `try_borrow_mut_lamports()`,
-/// `lamports()`, `set_lamports(_)`, or a variable named `lamports`/`balance`?
 fn is_lamports_expression(e: &Expr) -> bool {
     is_lamports_dereference_mut(e) || is_lamports_method_call(e) || is_lamports_var(e)
 }
 
-/// Does the expression chain through `try_borrow_mut_lamports()` or `lamports()`?
 fn is_lamports_dereference_mut(e: &Expr) -> bool {
     match e {
         Expr::Unary(u) => is_lamports_dereference_mut(&u.expr),
@@ -535,7 +501,6 @@ fn is_lamports_dereference_mut(e: &Expr) -> bool {
     }
 }
 
-/// Is this a direct `.lamports()` or `.set_lamports(_)` call (not behind deref)?
 fn is_lamports_method_call(e: &Expr) -> bool {
     match e {
         Expr::MethodCall(m) => {
@@ -548,7 +513,6 @@ fn is_lamports_method_call(e: &Expr) -> bool {
     }
 }
 
-/// Does the expression reference a variable named `lamports` or `balance`?
 fn is_lamports_var(e: &Expr) -> bool {
     if let Expr::Path(p) = e {
         if let Some(seg) = p.path.segments.last() {
@@ -559,8 +523,6 @@ fn is_lamports_var(e: &Expr) -> bool {
     false
 }
 
-/// Walk through wrappers to extract the base account name from a lamports expression.
-/// Handles: `**vault.try_borrow_mut_lamports()?`, `ctx.accounts.vault`, `vault.lamports()`, etc.
 fn extract_account_name(e: &Expr) -> String {
     match e {
         Expr::Unary(u) => extract_account_name(&u.expr),
@@ -572,7 +534,6 @@ fn extract_account_name(e: &Expr) -> String {
                 syn::Member::Named(i) => i.to_string(),
                 syn::Member::Unnamed(_) => String::new(),
             };
-            // Walk through `ctx.accounts.vault` → extract `vault`.
             if name == "accounts" || name == "ctx" {
                 extract_account_name(&f.base)
             } else {
@@ -584,7 +545,6 @@ fn extract_account_name(e: &Expr) -> String {
     }
 }
 
-/// Heuristically extract account name from `require!` macro arguments.
 fn extract_account_from_require_macro(tokens: &proc_macro2::TokenStream) -> Option<String> {
     // The tokens are the content between the delimiters.
     // We look for patterns like `account.lamports()`, `account.lamports`, or
@@ -593,11 +553,9 @@ fn extract_account_from_require_macro(tokens: &proc_macro2::TokenStream) -> Opti
     find_first_account_in_tokens(&s)
 }
 
-/// Find the first account-like identifier in a token string.
 fn find_first_account_in_tokens(s: &str) -> Option<String> {
     // Look for patterns: `ctx.accounts.X`, `X.lamports`, `X.key()`, `X.balance`
     let cleaned = s.replace(char::is_whitespace, "");
-    // Try `ctx.accounts.X` first.
     if let Some(idx) = cleaned.find("ctx.accounts.") {
         let after = &cleaned[idx + "ctx.accounts.".len()..];
         if let Some(end) = after.find(|c: char| !c.is_alphanumeric() && c != '_') {
@@ -607,9 +565,7 @@ fn find_first_account_in_tokens(s: &str) -> Option<String> {
             }
         }
     }
-    // Try `X.lamports()` or `X.lamports`.
     if let Some(idx) = cleaned.find(".lamports") {
-        // Walk backwards to find the identifier before the dot.
         let before = &cleaned[..idx];
         if let Some(dot) = before.rfind('.') {
             let name = &before[dot + 1..];
@@ -630,7 +586,6 @@ fn find_first_account_in_tokens(s: &str) -> Option<String> {
             }
         }
     }
-    // Fallback: first identifier token.
     for token in cleaned.split(|c: char| !c.is_alphanumeric() && c != '_') {
         if !token.is_empty()
             && token.chars().next().unwrap_or(' ').is_alphabetic()
@@ -646,28 +601,12 @@ fn find_first_account_in_tokens(s: &str) -> Option<String> {
     None
 }
 
-/// Extract CPI target from `invoke` / `invoke_signed` macro tokens.
 fn extract_cpi_target(_tokens: &proc_macro2::TokenStream) -> String {
     // Heuristic: the first account-like argument in the invoke call.
     // This is intentionally rough — the rule using this hint is heuristic anyway.
     "invoke".to_string()
 }
 
-/// Classify the signer-seeds argument of an `invoke_signed!` call.
-///
-/// The macro form is `invoke_signed!(instruction, accounts, &[&[seed1, seed2, ...], ...])`.
-/// The third argument is a `&[&[&[u8]]]`. We treat the *inner* slices
-/// (one per signer) independently — each must be entirely Safe for the
-/// whole call to be Safe.
-///
-/// A seed is **Safe** when its expression is one of:
-///   - a `b"..."` byte string literal,
-///   - `ctx.bumps.<ident>` — the canonical bump Anchor manages for the PDA,
-///   - `<expr>.key().as_ref()` on a known account field.
-///
-/// A seed is **Dynamic** when it includes function args, locally-bound
-/// variables not traceable to a known account, or any other expression
-/// the AST layer cannot verify.
 fn classify_invoke_signed_seeds(tokens: &proc_macro2::TokenStream) -> (SignerSeedClass, String) {
     // Parse the macro body as a comma-separated list of expressions.
     let parser = Punctuated::<Expr, syn::Token![,]>::parse_terminated;
@@ -684,8 +623,6 @@ fn classify_invoke_signed_seeds(tokens: &proc_macro2::TokenStream) -> (SignerSee
     classify_seed_argument(seeds_expr)
 }
 
-/// Classify a signer-seeds expression that we already have in hand
-/// (function-call form: the 3rd argument of `invoke_signed(&ix, …, seeds)`).
 fn classify_seed_argument(seeds_expr: &Expr) -> (SignerSeedClass, String) {
     // Walk the outer `&[ ... ]` to find the inner slice(s).
     let inner_slices = match collect_seed_slices(seeds_expr) {
@@ -714,8 +651,6 @@ fn classify_seed_argument(seeds_expr: &Expr) -> (SignerSeedClass, String) {
     (class, summary_parts.join(" "))
 }
 
-/// Returns the path name of an `Expr` if it's a plain path expression.
-/// Used to detect `solana_program::program::invoke_signed(...)` etc.
 fn expr_path_name(e: &Expr) -> Option<String> {
     match e {
         Expr::Path(p) => Some(
@@ -730,26 +665,13 @@ fn expr_path_name(e: &Expr) -> Option<String> {
     }
 }
 
-/// True if the path ends in `invoke_signed` or any qualified variant
-/// like `solana_program::program::invoke_signed`. The trailing-segment
-/// match is intentional — it accepts the function form, the
-/// `solana_program::program::` form, and any future re-export.
 fn is_invoke_signed_path(path: &str) -> bool {
     path == "invoke_signed"
         || path.ends_with("::invoke_signed")
         || path.ends_with("::program::invoke_signed")
 }
 
-/// Walk an expression that should evaluate to `&[&[u8], &[u8], ...]` and
-/// return the inner `&[u8]` expressions (one per signer).
-///
-/// Anchor programs wrap the seeds in `&[&[ ... ]]` — the outer `&[…]` is
-/// the signer list, each `&[ … ]` is one signer's seed set. We strip one
-/// or two levels of `Expr::Reference` to reach the underlying array.
 fn collect_seed_slices(e: &Expr) -> Option<Vec<&ExprArray>> {
-    // The expression is typically `&[&[a, b, c], &[d, e]]`. The outermost
-    // shape is `Expr::Reference(_, Expr::Array(...))`. Strip the `&` to
-    // get the array of inner slices.
     let outer = strip_reference(e)?;
     let outer_array = match outer {
         Expr::Array(a) => a,
@@ -757,9 +679,6 @@ fn collect_seed_slices(e: &Expr) -> Option<Vec<&ExprArray>> {
     };
     let mut out = Vec::new();
     for elem in &outer_array.elems {
-        // Each element is typically `&[a, b, c]`. Strip the `&` to get
-        // the inner array. We also accept a bare array (no `&`) since
-        // some code uses that form.
         let inner = strip_reference(elem)?;
         if let Expr::Array(inner_array) = inner {
             out.push(inner_array);
@@ -770,7 +689,6 @@ fn collect_seed_slices(e: &Expr) -> Option<Vec<&ExprArray>> {
     Some(out)
 }
 
-/// If `e` is `&inner` or `&mut inner`, return the inner expression.
 fn strip_reference(e: &Expr) -> Option<&Expr> {
     if let Expr::Reference(ExprReference { expr, .. }) = e {
         Some(expr)
@@ -779,12 +697,7 @@ fn strip_reference(e: &Expr) -> Option<&Expr> {
     }
 }
 
-/// Classify a single seed expression as Safe or not, returning a short
-/// description for the rule's finding message.
 fn classify_seed_expression(e: &Expr) -> (bool, String) {
-    // Seeds are often written as `&[ctx.bumps.vault]` — the outer `&` is
-    // part of the seed expression but is irrelevant for safety. Strip it
-    // so the inner array can be classified correctly.
     let inner = strip_reference(e).unwrap_or(e);
     let raw = inner
         .to_token_stream()
@@ -816,23 +729,12 @@ fn classify_seed_expression(e: &Expr) -> (bool, String) {
                 (false, format!("{raw} (multi-element seed array)"))
             }
         }
-        // `ctx.bumps.vault` — canonical bump path.
         _ if is_canonical_bump(e) => (true, raw),
-        // `ctx.accounts.user.key().as_ref()` — known account key.
         _ if is_account_key_ref(e) => (true, raw),
-        // Anything else is treated as dynamic (user input, function arg,
-        // unresolvable expression).
         _ => (false, format!("{raw} (function arg or unresolvable)")),
     }
 }
 
-/// True if `e` is `ctx.bumps.<ident>` — Anchor's canonical bump access.
-///
-/// The expression has the shape `ctx.bumps.<member>`, i.e. an outer
-/// `Expr::Field` whose `member` is the field name, whose `base` is
-/// `ctx.bumps` (a nested `Expr::Field` whose `member` is `bumps` and
-/// `base` is a `ctx` path), and the leaf `base` is an `Expr::Path`
-/// whose only segment is `ctx`.
 fn is_canonical_bump(e: &Expr) -> bool {
     let outer = match e {
         Expr::Field(f) => f,
@@ -855,17 +757,11 @@ fn is_canonical_bump(e: &Expr) -> bool {
     leaf.path.segments[0].ident == "ctx"
 }
 
-/// True if `e` is `<expr>.key().as_ref()` — the canonical form to grab
-/// an account's pubkey as a seed byte slice.
 fn is_account_key_ref(e: &Expr) -> bool {
     if let Expr::MethodCall(call) = e {
         if call.method == "as_ref" {
             if let Expr::MethodCall(inner) = &*call.receiver {
                 if inner.method == "key" {
-                    // Receiver is `<expr>.key()`. The `<expr>` should be
-                    // a field access like `ctx.accounts.user` — but we
-                    // accept any path expression as a reasonable
-                    // approximation.
                     return true;
                 }
             }
@@ -874,19 +770,13 @@ fn is_account_key_ref(e: &Expr) -> bool {
     false
 }
 
-/// Convert an expression to a short string representation for the amount hint.
 fn expr_to_string(e: &Expr) -> String {
     e.to_token_stream()
         .to_string()
         .replace(char::is_whitespace, "")
 }
 
-// ── Existing arithmetic type helpers ─────────────────────────────────────
-
 fn expr_type_name(e: &Expr) -> String {
-    // We don't have a real type resolver. For literals we know the suffix;
-    // for identifiers we report the variable name. Rules that need more
-    // precision can be tightened in a later pass.
     match e {
         Expr::Lit(l) => match &l.lit {
             syn::Lit::Int(_) => "int_literal".to_string(),
@@ -900,9 +790,6 @@ fn expr_type_name(e: &Expr) -> String {
     }
 }
 
-/// Best-effort name of a `syn::Type` for the `as` cast visitor. Covers the
-/// common integer primitives; anything else returns an empty string, which
-/// makes the rule skip the hint.
 fn type_name(t: &Type) -> String {
     match t {
         Type::Path(p) => last_path_segment(&p.path),
@@ -928,10 +815,6 @@ fn is_int_type(s: &str) -> bool {
     )
 }
 
-/// Fallback heuristic: if the expression name *looks* like an integer
-/// (parameter called `amount`, `value`, `total`, …) we treat it as one.
-/// This is intentionally broad — false positives are cheap to silence and
-/// a missed overflow check is much worse than a false alarm.
 fn looks_like_int(s: &str) -> bool {
     if s.is_empty() {
         return false;

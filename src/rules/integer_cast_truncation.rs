@@ -37,23 +37,15 @@ impl Rule for IntegerCastTruncation {
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         let mut out = Vec::new();
-        // Dedupe per (file, line, from_ty, to_ty) so a tight loop with
-        // many identical casts doesn't flood the report. Two casts at
-        // different lines still produce separate findings.
         let mut seen: HashSet<(String, usize, String, String)> = HashSet::new();
 
         for hint in &ctx.ast_hints {
             if let AstHintKind::IntegerCast { from_ty, to_ty } = &hint.kind {
                 let from_w = source_width(from_ty);
                 let to_w = int_width(to_ty);
-                // Skip when destination width is unknown (could be a
-                // user-defined newtype that isn't actually an integer).
                 let Some(to_w) = to_w else {
                     continue;
                 };
-                // Skip when the source is no wider than the destination.
-                // `source_width` already accounts for the `looks_like_int`
-                // heuristic, so `amount as u64` is treated as same-width.
                 if from_w <= to_w {
                     continue;
                 }
@@ -97,7 +89,6 @@ fn int_width(ty: &str) -> Option<usize> {
         "u32" | "i32" => Some(32),
         "u64" | "i64" => Some(64),
         "u128" | "i128" => Some(128),
-        // Platform-dependent: skip rather than guess.
         "usize" | "isize" => None,
         _ => None,
     }
@@ -114,17 +105,9 @@ fn source_width(ty: &str) -> usize {
     if let Some(w) = int_width(ty) {
         return w;
     }
-    // Heuristic: an untracked path that *looks like* an integer is
-    // almost always a `u64` lamports/amount parameter in Anchor code.
-    // Reporting it as 64 bits is the right call: if the cast target is
-    // narrower, that's a real truncation; if it's wider, the rule
-    // skips the hint anyway.
     if looks_like_int(ty) {
         return 64;
     }
-    // Unknown source — assume widest sensible so we never *miss* a
-    // truncation. The rule still requires the destination to be a
-    // known narrower integer.
     128
 }
 

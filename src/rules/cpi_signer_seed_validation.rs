@@ -53,10 +53,6 @@ impl Rule for CpiSignerSeedValidation {
                 ..
             } = &hint.kind
             {
-                // The Absent case covers empty seeds (equivalent to a
-                // plain `invoke`) and macro-token parse failures. Both
-                // are programmer mistakes rather than security
-                // vulnerabilities, so we don't fire on them.
                 if matches!(seeds, SignerSeedClass::Safe | SignerSeedClass::Absent) {
                     continue;
                 }

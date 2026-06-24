@@ -52,7 +52,6 @@ impl Rule for MissingBumpSeedCanonicalization {
             } = &hint.kind
             {
                 for constraint in constraints {
-                    // Find all `bump = <expr>` patterns (not bare `bump` or `bumps`).
                     if let Some(bump_expr) = extract_bump_expression(constraint) {
                         if is_non_canonical_bump(bump_expr) && !seen.contains(field_name) {
                             seen.insert(field_name.clone());
@@ -91,15 +90,12 @@ impl Rule for MissingBumpSeedCanonicalization {
 fn extract_bump_expression(constraint: &str) -> Option<&str> {
     let idx = constraint.find("bump")?;
     let after = &constraint[idx + "bump".len()..];
-    // `bumps` (plural — `bumps = ...` or `bump_seed`) is not a bump constraint.
     if after.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
         return None;
     }
-    // Bare `bump` (followed by `,` or end) is canonical — skip.
     if after.starts_with(',') || after.trim().is_empty() {
         return None;
     }
-    // `bump = <expr>` — extract the expression.
     let eq_idx = after.find('=')?;
     let expr = after[eq_idx + 1..]
         .trim_start()
@@ -114,14 +110,8 @@ fn extract_bump_expression(constraint: &str) -> Option<&str> {
 /// Returns `true` if the bump expression is non-canonical (user-controlled
 /// or derived from an untrusted source).
 fn is_non_canonical_bump(expr: &str) -> bool {
-    // Canonical forms — do NOT flag:
-    //   `bump = ctx.bumps.foo` — framework-managed canonical bump
-    //   `bump = bumps.foo`    — shorthand for ctx.bumps
     if expr.starts_with("ctx.bumps") || expr.starts_with("bumps.") {
         return false;
     }
-    // Anything else is non-canonical:
-    //   `bump` (bare ident from a function arg),
-    //   `args.bump`, `user_bump`, `seed_bump`, `params.bump`, etc.
     true
 }

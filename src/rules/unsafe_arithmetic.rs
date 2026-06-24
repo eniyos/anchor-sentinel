@@ -33,8 +33,6 @@ impl Rule for UnsafeArithmetic {
 
         for hint in &ctx.ast_hints {
             if let AstHintKind::UnsafeArithmetic { op, lhs_ty, rhs_ty } = &hint.kind {
-                // Dedupe per (file, op, lhs_ty, rhs_ty) so a tight loop with
-                // 50 additions doesn't flood the report.
                 let key = (
                     hint.file.clone(),
                     op.clone(),

@@ -53,7 +53,8 @@ fn run(cli: Cli) -> Result<ExitCode> {
             strict,
             ignore,
             min_severity,
-        } => cmd_scan(&path, format, strict, &ignore, min_severity),
+            verbose,
+        } => cmd_scan(&path, format, strict, &ignore, min_severity, verbose),
         Command::Rules => {
             cmd_rules();
             Ok(ExitCode::SUCCESS)
@@ -75,6 +76,7 @@ fn cmd_scan(
     strict: bool,
     ignore: &[String],
     min_severity: Option<cli::MinSeverity>,
+    verbose: bool,
 ) -> Result<ExitCode> {
     let project = std::path::Path::new(path);
     if !project.exists() {
@@ -83,7 +85,7 @@ fn cmd_scan(
 
     let cfg = config::Config::load(project);
 
-    let mut all_ignore = cfg.ignore.clone();
+    let mut all_ignore: Vec<String> = cfg.ignore_rules().to_vec();
     for i in ignore {
         if !all_ignore.contains(i) {
             all_ignore.push(i.clone());
@@ -91,8 +93,7 @@ fn cmd_scan(
     }
 
     let effective_min_severity = min_severity.or_else(|| {
-        cfg.min_severity
-            .as_ref()
+        cfg.min_severity()
             .and_then(|s| match s.to_lowercase().as_str() {
                 "info" => Some(cli::MinSeverity::Info),
                 "low" => Some(cli::MinSeverity::Low),
@@ -110,7 +111,10 @@ fn cmd_scan(
     let t_total_start = Instant::now();
 
     let t_load_start = Instant::now();
-    let loaded = loader::load(project, &cfg.exclude).context("loading project")?;
+    if verbose {
+        eprintln!("[*] Loading project...");
+    }
+    let loaded = loader::load(project, cfg.exclude_paths()).context("loading project")?;
     if loaded.idl_files.is_empty() {
         anyhow::bail!(
             "no IDL files found. Run `anchor build` inside the project first \
@@ -118,18 +122,55 @@ fn cmd_scan(
         );
     }
     let t_load = t_load_start.elapsed();
+    if verbose {
+        eprintln!(
+            "[+] Loaded {} IDL file(s), {} program(s) in {:?}",
+            loaded.idl_files.len(),
+            loaded.programs.len(),
+            t_load
+        );
+    }
 
     let t_parse_start = Instant::now();
+    if verbose {
+        eprintln!("[*] Parsing IDLs...");
+    }
     let programs = loader::parse_idls(&loaded).context("parsing IDLs")?;
     let t_parse = t_parse_start.elapsed();
+    if verbose {
+        let total_instrs: usize = programs.iter().map(|p| p.instructions.len()).sum();
+        eprintln!(
+            "[+] Parsed {} program(s) with {} instruction(s) in {:?}",
+            programs.len(),
+            total_instrs,
+            t_parse
+        );
+    }
 
     let t_ast_start = Instant::now();
+    if verbose {
+        eprintln!("[*] Analyzing source code...");
+    }
     let ast_hints = ast::collect_hints(&loaded.programs);
     let t_ast = t_ast_start.elapsed();
+    if verbose {
+        eprintln!("[+] AST analysis complete in {:?}", t_ast);
+    }
 
     let t_rules_start = Instant::now();
+    if verbose {
+        eprintln!("[*] Running security rules...");
+    }
     let mut all_findings = Vec::new();
-    for ir in &programs {
+    let rule_count = engine::registry::list_rule_ids().len();
+    for (i, ir) in programs.iter().enumerate() {
+        if verbose {
+            eprintln!(
+                "[*] Checking program {} of {}...",
+                i + 1,
+                programs.len()
+            );
+        }
         let ctx = AnalysisContext {
             ir: ir.clone(),
             ast_hints: ast_hints.clone(),
@@ -138,6 +179,12 @@ fn cmd_scan(
     }
     let t_rules = t_rules_start.elapsed();
     let t_total = t_total_start.elapsed();
+    if verbose {
+        eprintln!(
+            "[+] Executed {} rule(s) in {:?} (total: {:?})",
+            rule_count, t_rules, t_total
+        );
+    }
 
     let timings = ScanTimings {
         load: t_load,
@@ -156,7 +203,6 @@ fn cmd_scan(
         all_findings.retain(|f| f.severity >= min);
     }
 
-    let rule_count = engine::registry::list_rule_ids().len();
     let programs_count = loaded.programs.len();
     let instructions_count: usize = programs.iter().map(|p| p.instructions.len()).sum();
 

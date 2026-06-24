@@ -47,8 +47,6 @@ impl Rule for MissingSigner {
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        // Build a set of (field_name) that AST has confirmed as `Signer`
-        // or with an explicit `signer` constraint.
         let mut ast_signed: HashSet<String> = HashSet::new();
         let mut ast_account_info: HashSet<String> = HashSet::new();
         let hint_index = field_hint_index(ctx);
@@ -74,7 +72,6 @@ impl Rule for MissingSigner {
                 if acct.is_signer {
                     continue;
                 }
-                // AST says it's signed for.
                 if ast_signed.contains(&acct.name) {
                     continue;
                 }

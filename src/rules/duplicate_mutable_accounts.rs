@@ -38,10 +38,7 @@ impl Rule for DuplicateMutableAccounts {
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        // Build a set of (field_name) where AST shows `Account<…>` or
-        // `SystemAccount` — these derive their address and can't be spoofed.
         let mut ast_safe: HashSet<String> = HashSet::new();
-        // Also track which fields are typed `AccountInfo` (unsafe).
         let mut ast_account_info: HashSet<String> = HashSet::new();
         let hint_index = field_hint_index(ctx);
         for hint in &ctx.ast_hints {
@@ -62,23 +59,16 @@ impl Rule for DuplicateMutableAccounts {
 
         let mut out = Vec::new();
         for ix in &ctx.ir.instructions {
-            // Find writable non-signer accounts (potential duplication targets).
             let writable_non_signers: Vec<_> = ix
                 .accounts
                 .iter()
                 .filter(|a| a.is_mut && !a.is_signer)
                 .collect();
 
-            // Need ≥2 to be vulnerable to duplication.
             if writable_non_signers.len() < 2 {
                 continue;
             }
 
-            // Check if any are safely typed (Account<…>, etc.).
-
-            // If ALL writable non-signers are `AccountInfo`, flag.
-            // If some are safe and some are AccountInfo, still flag the
-            // AccountInfo ones — partial confusion is still a risk.
             let unsafe_accounts: Vec<_> = writable_non_signers
                 .iter()
                 .filter(|a| !ast_safe.contains(&a.name))

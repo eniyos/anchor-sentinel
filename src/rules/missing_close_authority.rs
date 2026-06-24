@@ -46,9 +46,6 @@ impl Rule for MissingCloseAuthority {
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         let mut out = Vec::new();
 
-        // Group AST hints by struct so the rule can answer
-        // "is field `X` a Signer? does any other field in the same struct
-        // have has_one = X or constraint = … X …?"
         let by_struct = group_by_struct(&ctx.ast_hints);
         let hint_index = field_hint_index(ctx);
         let mut seen: HashSet<(String, String, String)> = HashSet::new();
@@ -70,21 +67,16 @@ impl Rule for MissingCloseAuthority {
             }
 
             for (field_name, target) in &close_pairs {
-                // 1. Is the close target itself a `Signer<'info>` on this struct?
                 let target_is_signer = fields
                     .iter()
                     .any(|f| f.field_name == *target && is_signer_type(&f.ty));
 
-                // 2. Does any field in the struct have `has_one = <target>`?
                 let target_has_one = fields.iter().any(|f| {
                     f.constraints
                         .iter()
                         .any(|c| extract_named_ident(c, "has_one") == Some(target.as_str()))
                 });
 
-                // 3. Does any field have a `constraint = …<target>…` that
-                //    names the target? We use a word-boundary match so
-                //    e.g. `target` doesn't match a field called `targetx`.
                 let target_in_constraint = fields.iter().any(|f| {
                     f.constraints.iter().any(|c| {
                         if let Some(expr) = extract_constraint_expr(c) {
@@ -166,16 +158,9 @@ fn extract_close_target(constraints: &[String]) -> Option<String> {
     None
 }
 
-/// Extract the RHS identifier from a constraint like `<name> = <ident>`.
-/// Whitespace around `=` is tolerated. Returns `None` if the constraint
-/// doesn't match that pattern or the RHS isn't a plain identifier.
 fn extract_named_ident<'a>(constraint: &'a str, name: &str) -> Option<&'a str> {
-    // Locate `name` followed by `=` (skipping `name =` over `name.` /
-    // `name(`). We do this by searching for `name` and then checking the
-    // character after.
     let idx = constraint.find(name)?;
     let after = &constraint[idx + name.len()..];
-    // `has_one` shouldn't match `has_one_xyz`; same for `close`.
     if after.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
         return None;
     }
@@ -202,7 +187,6 @@ fn extract_constraint_expr(constraint: &str) -> Option<&str> {
     }
     let after = after.trim_start();
     let after = after.strip_prefix('=')?.trim_start();
-    // Strip a trailing comma if present.
     let expr = after.trim_end().trim_end_matches(',').trim();
     if expr.is_empty() {
         None

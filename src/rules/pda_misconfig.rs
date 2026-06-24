@@ -79,26 +79,27 @@ impl Rule for PdaMisconfig {
                             .trim_start()
                             .trim_end_matches(',')
                             .trim();
-                        if !expr.is_empty() && expr != "ctx.bumps" && !expr.starts_with("ctx.bumps")
+                        if !expr.is_empty()
+                            && expr != "ctx.bumps"
+                            && !expr.starts_with("ctx.bumps")
+                            && is_plain_ident(expr)
                         {
-                            if is_plain_ident(expr) {
-                                seen_fields.insert(field_name.clone());
-                                let mut b = Finding::builder(
-                                    self.id(),
-                                    self.severity(),
-                                    format!(
-                                        "Account `{}` pins `bump = {}` — this binds the bump to a user-supplied value instead of the canonical bump. The classic Sealevel-Attacks bypass.",
-                                        field_name, expr
-                                    ),
-                                )
-                                .program(&ctx.ir.name)
-                                .account(field_name)
-                                .hint("Replace with the bare `bump` identifier or `bump = ctx.bumps.<field>` to use the canonical bump.");
-                                if let Some(h) = hint_index.get(field_name) {
-                                    b = h.location().stamp(b);
-                                }
-                                out.push(b.build());
+                            seen_fields.insert(field_name.clone());
+                            let mut b = Finding::builder(
+                                self.id(),
+                                self.severity(),
+                                format!(
+                                    "Account `{}` pins `bump = {}` — this binds the bump to a user-supplied value instead of the canonical bump. The classic Sealevel-Attacks bypass.",
+                                    field_name, expr
+                                ),
+                            )
+                            .program(&ctx.ir.name)
+                            .account(field_name)
+                            .hint("Replace with the bare `bump` identifier or `bump = ctx.bumps.<field>` to use the canonical bump.");
+                            if let Some(h) = hint_index.get(field_name) {
+                                b = h.location().stamp(b);
                             }
+                            out.push(b.build());
                         }
                     }
                 }

@@ -36,8 +36,9 @@ impl Rule for LamportsDrain {
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
         type ZeroEntry<'a> = (String, usize, &'a AstHint);
-        let mut zeros: HashMap<FnKey, Vec<ZeroEntry<'_>>> = HashMap::new();
-        let mut auth_checks: HashMap<FnKey, Vec<usize>> = HashMap::new();
+        let hint_count = ctx.ast_hints.len();
+        let mut zeros: HashMap<FnKey, Vec<ZeroEntry<'_>>> = HashMap::with_capacity(hint_count);
+        let mut auth_checks: HashMap<FnKey, Vec<usize>> = HashMap::with_capacity(hint_count);
 
         let mut current_fn: Option<FnKey> = None;
         for hint in &ctx.ast_hints {

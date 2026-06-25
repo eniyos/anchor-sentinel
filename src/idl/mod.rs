@@ -119,10 +119,7 @@ fn convert_v31(idl: v31::IdlFile, source_path: &str) -> ProgramIr {
                 .args
                 .into_iter()
                 .map(|a| {
-                    let ty_str =
-                        a.ty.as_ref()
-                            .map(|v| serde_json::to_string(v).unwrap_or_default())
-                            .unwrap_or_default();
+                    let ty_str = a.ty.as_ref().map(|v| v.to_string()).unwrap_or_default();
                     InstructionArg {
                         name: a.name,
                         ty: ty_str,

@@ -34,9 +34,11 @@ impl Rule for UncheckedBalanceFlow {
     }
 
     fn check(&self, ctx: &AnalysisContext) -> Result<Vec<Finding>> {
-        let mut credits: HashMap<String, Vec<(String, String, usize)>> = HashMap::new();
-        let mut debits: HashMap<String, Vec<(String, usize)>> = HashMap::new();
-        let mut cpi_ops: HashMap<String, Vec<String>> = HashMap::new(); // target names
+        let hint_count = ctx.ast_hints.len();
+        let mut credits: HashMap<String, Vec<(String, String, usize)>> =
+            HashMap::with_capacity(hint_count);
+        let mut debits: HashMap<String, Vec<(String, usize)>> = HashMap::with_capacity(hint_count);
+        let mut cpi_ops: HashMap<String, Vec<String>> = HashMap::with_capacity(hint_count);
 
         let mut current_fn: Option<String> = None;
         for hint in &ctx.ast_hints {

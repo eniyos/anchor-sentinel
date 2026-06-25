@@ -819,16 +819,19 @@ fn looks_like_int(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
-    let lname = s.to_ascii_lowercase();
+    let lower = s.to_ascii_lowercase();
     matches!(
-        lname.as_str(),
+        lower.as_str(),
         "amount" | "value" | "total" | "lamports" | "balance" | "delta" | "n" | "i" | "x" | "y"
-    ) || lname.ends_with("_amount")
-        || lname.ends_with("_total")
-        || lname.ends_with("_value")
+    ) || lower.ends_with("_amount")
+        || lower.ends_with("_total")
+        || lower.ends_with("_value")
 }
 
 fn is_string_like(s: &str) -> bool {
-    let l = s.to_ascii_lowercase();
-    l.contains("string") || l.contains("&str") || l.contains("name") || l.contains("msg")
+    let lower = s.to_ascii_lowercase();
+    lower.contains("string")
+        || lower.contains("&str")
+        || lower.contains("name")
+        || lower.contains("msg")
 }

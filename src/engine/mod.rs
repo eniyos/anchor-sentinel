@@ -392,12 +392,10 @@ pub fn run_all_rules(ctx: &AnalysisContext) -> Result<Vec<Finding>> {
 /// one of the declarations; the user can fix the right one from the
 /// instruction name alone.
 pub fn field_hint_index(ctx: &AnalysisContext) -> std::collections::HashMap<String, AstHint> {
-    let mut index = std::collections::HashMap::new();
+    let mut index = std::collections::HashMap::with_capacity(ctx.ast_hints.len());
     for hint in &ctx.ast_hints {
         if let AstHintKind::AccountsField { field_name, .. } = &hint.kind {
-            index
-                .entry(field_name.clone())
-                .or_insert_with(|| hint.clone());
+            index.entry(field_name.clone()).or_insert(hint.clone());
         }
     }
     index

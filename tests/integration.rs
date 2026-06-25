@@ -38,10 +38,9 @@ fn cpi_vulnerable_triggers_cpi_rules() {
         output.status.success(),
         "scan should succeed on the fixture"
     );
-    let stdout = String::from_utf8(output.stdout)
-        .expect("output should be valid UTF-8");
-    let v: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("output should be valid JSON");
+    let stdout = String::from_utf8(output.stdout).expect("output should be valid UTF-8");
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
     let arr = v["findings"]
         .as_array()
         .expect("findings should be an array");
@@ -61,10 +60,9 @@ fn cpi_vulnerable_has_no_false_positives_on_safe() {
         .output()
         .expect("scan command should run");
     assert!(output.status.success(), "scan should succeed");
-    let stdout = String::from_utf8(output.stdout)
-        .expect("output should be valid UTF-8");
-    let v: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("output should be valid JSON");
+    let stdout = String::from_utf8(output.stdout).expect("output should be valid UTF-8");
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
     let arr = v["findings"]
         .as_array()
         .expect("findings should be an array");
@@ -84,7 +82,10 @@ fn missing_idl_returns_error() {
         .args(["scan", dir.path().to_str().unwrap()])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("no IDL files found").or(predicate::str::contains("IDL")));
+        .stderr(
+            predicate::str::contains("no IDL files found")
+                .or(predicate::str::contains("IDL")),
+        );
 }
 
 #[test]
@@ -103,20 +104,15 @@ fn public_pda_insecure_triggers_pda_misconfig() {
         output.status.success(),
         "scan should not error on the fixture"
     );
-    let stdout = String::from_utf8(output.stdout)
-        .expect("output should be valid UTF-8");
-    let v: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("output should be valid JSON");
+    let stdout = String::from_utf8(output.stdout).expect("output should be valid UTF-8");
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
     let arr = v["findings"]
         .as_array()
         .expect("findings should be an array");
     let rules: Vec<&str> = arr
         .iter()
-        .map(|f| {
-            f["rule"]
-                .as_str()
-                .expect("rule should be a string")
-        })
+        .map(|f| f["rule"].as_str().expect("rule should be a string"))
         .collect();
     assert!(
         rules.contains(&"pda_misconfig"),
@@ -148,20 +144,15 @@ fn balance_drain_vulnerable_triggers_balance_rules() {
         .output()
         .expect("scan command should run");
     assert!(output.status.success(), "scan should succeed");
-    let stdout = String::from_utf8(output.stdout)
-        .expect("output should be valid UTF-8");
-    let v: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("output should be valid JSON");
+    let stdout = String::from_utf8(output.stdout).expect("output should be valid UTF-8");
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
     let arr = v["findings"]
         .as_array()
         .expect("findings should be an array");
     let rules: Vec<&str> = arr
         .iter()
-        .map(|f| {
-            f["rule"]
-                .as_str()
-                .expect("rule should be a string")
-        })
+        .map(|f| f["rule"].as_str().expect("rule should be a string"))
         .collect();
     assert!(
         rules.contains(&"missing_balance_check") || rules.contains(&"lamports_drain"),

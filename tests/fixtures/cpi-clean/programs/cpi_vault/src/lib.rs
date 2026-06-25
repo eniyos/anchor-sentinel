@@ -77,7 +77,7 @@ pub struct WithdrawPda<'info> {
     #[account(mut, seeds = [b"vault", user.key().as_ref()], bump)]
     pub vault: Account<'info, Vault>,
     #[account(mut)]
-    pub destination: AccountInfo<'info>,
+    pub destination: SystemAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -88,7 +88,7 @@ pub struct WithdrawDualPda<'info> {
     #[account(mut, seeds = [b"vault_b"], bump)]
     pub vault_b: Account<'info, Vault>,
     #[account(mut)]
-    pub destination: AccountInfo<'info>,
+    pub destination: SystemAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -97,7 +97,7 @@ pub struct WithdrawLiteral<'info> {
     #[account(mut, seeds = [b"vault"], bump)]
     pub vault: Account<'info, Vault>,
     #[account(mut)]
-    pub destination: AccountInfo<'info>,
+    pub destination: SystemAccount<'info>,
 }
 
 #[account]

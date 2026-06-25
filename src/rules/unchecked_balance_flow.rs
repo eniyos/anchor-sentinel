@@ -103,7 +103,7 @@ impl Rule for UncheckedBalanceFlow {
                     } = &h.kind
                     {
                         (check_type.contains("rent") || check_type.contains("min"))
-                            && writable_non_signers.iter().any(|a| a.name == *account)
+                            || writable_non_signers.iter().any(|a| a.name == *account)
                     } else {
                         false
                     }
@@ -136,9 +136,7 @@ impl Rule for UncheckedBalanceFlow {
                     );
                 }
             } else if ix_debits > 0 && ix_credits == 0 && ix_cpi > 0 {
-                let targets = cpi_ops.get(&ix.name).expect(
-                    "cpi_ops entry should exist when ix_cpi > 0; this indicates an internal consistency error"
-                );
+                let targets = cpi_ops.get(&ix.name).unwrap();
                 let account_names: Vec<&str> = writable_non_signers
                     .iter()
                     .map(|a| a.name.as_str())

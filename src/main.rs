@@ -83,6 +83,9 @@ fn cmd_scan(
         anyhow::bail!("project path does not exist: {}", project.display());
     }
 
+    // Load config — if it exists and is malformed, the error is silently ignored.
+    // This is intentional: we want to use defaults if the file is missing, but
+    // users should be aware that a malformed config will be skipped.
     let cfg = config::Config::load(project);
 
     let mut all_ignore: Vec<String> = cfg.ignore_rules().to_vec();

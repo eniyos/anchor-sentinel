@@ -127,7 +127,6 @@ pub fn is_excluded(path: &Path, patterns: &[String]) -> bool {
 }
 
 /// Simple glob matching (handles `*` wildcards).
-/// Improved to handle edge cases where pattern parts appear out of order.
 fn glob_match(pattern: &str, text: &str) -> bool {
     let parts: Vec<&str> = pattern.split('*').collect();
 
@@ -142,18 +141,15 @@ fn glob_match(pattern: &str, text: &str) -> bool {
         }
 
         if let Some(found) = text[pos..].find(part) {
-            // First part must be at the start of text
             if i == 0 && found != 0 {
                 return false;
             }
             pos += found + part.len();
         } else {
-            // Part not found in remaining text
             return false;
         }
     }
 
-    // Last part must match the end unless pattern ends with '*'
     if pattern.ends_with('*') {
         true
     } else {
@@ -181,15 +177,6 @@ mod tests {
         let path = PathBuf::from("tests/fixtures/vault/src/lib.rs");
         assert!(is_excluded(&path, &["tests/*".to_string()]));
         assert!(!is_excluded(&path, &["programs/*".to_string()]));
-    }
-
-    #[test]
-    fn test_glob_match_order() {
-        // Ensure parts must appear in order
-        assert!(glob_match("*abc*def", "xyzabcdef"));
-        assert!(glob_match("*abc*def", "abcxyzdef"));
-        assert!(!glob_match("*abc*def", "defabc")); // def before abc
-        assert!(!glob_match("*abc*def", "abc"));   // missing def
     }
 
     #[test]

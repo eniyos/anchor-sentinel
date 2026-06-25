@@ -172,7 +172,7 @@ impl Rule for UncheckedBalanceFlow {
                         .get(&ix.name)
                         .map(|v| {
                             v.iter()
-                                .map(|(a, expr, _seq)| format!("{a} (+{expr})" ))
+                                .map(|(a, expr, _seq)| format!("{a} (+{expr})"))
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         })

@@ -65,35 +65,50 @@ fn test_glob_match_literal() {
     // Test literal matching
     let pattern = "tests/fixtures/vault";
     let path = std::path::PathBuf::from("tests/fixtures/vault");
-    assert!(anchor_sentinel::config::is_excluded(&path, &[pattern.to_string()]));
+    assert!(anchor_sentinel::config::is_excluded(
+        &path,
+        &[pattern.to_string()]
+    ));
 }
 
 #[test]
 fn test_glob_match_prefix() {
     let pattern = "tests";
     let path = std::path::PathBuf::from("tests/fixtures/vault");
-    assert!(anchor_sentinel::config::is_excluded(&path, &[pattern.to_string()]));
+    assert!(anchor_sentinel::config::is_excluded(
+        &path,
+        &[pattern.to_string()]
+    ));
 }
 
 #[test]
 fn test_glob_match_no_match() {
     let pattern = "src";
     let path = std::path::PathBuf::from("tests/fixtures/vault");
-    assert!(!anchor_sentinel::config::is_excluded(&path, &[pattern.to_string()]));
+    assert!(!anchor_sentinel::config::is_excluded(
+        &path,
+        &[pattern.to_string()]
+    ));
 }
 
 #[test]
 fn test_glob_match_extension() {
     let pattern = "**/*.rs";
     let path = std::path::PathBuf::from("src/lib.rs");
-    assert!(anchor_sentinel::config::is_excluded(&path, &[pattern.to_string()]));
+    assert!(anchor_sentinel::config::is_excluded(
+        &path,
+        &[pattern.to_string()]
+    ));
 }
 
 #[test]
 fn test_glob_match_double_star() {
     let pattern = "tests/**/*.rs";
     let path = std::path::PathBuf::from("tests/fixtures/vault/lib.rs");
-    assert!(anchor_sentinel::config::is_excluded(&path, &[pattern.to_string()]));
+    assert!(anchor_sentinel::config::is_excluded(
+        &path,
+        &[pattern.to_string()]
+    ));
 }
 
 #[test]

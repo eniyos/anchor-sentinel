@@ -1,6 +1,6 @@
 //! Unit tests for rules module
 
-use anchor_sentinel::engine::{Severity, registry};
+use anchor_sentinel::engine::{registry, Severity};
 
 #[test]
 fn test_all_rules_registered() {
@@ -12,9 +12,18 @@ fn test_all_rules_registered() {
 fn test_rule_severities() {
     let rule_ids = registry::list_rule_ids();
 
-    let critical = rule_ids.iter().filter(|(_, sev, _)| matches!(sev, Severity::Critical)).count();
-    let high = rule_ids.iter().filter(|(_, sev, _)| matches!(sev, Severity::High)).count();
-    let medium = rule_ids.iter().filter(|(_, sev, _)| matches!(sev, Severity::Medium)).count();
+    let critical = rule_ids
+        .iter()
+        .filter(|(_, sev, _)| matches!(sev, Severity::Critical))
+        .count();
+    let high = rule_ids
+        .iter()
+        .filter(|(_, sev, _)| matches!(sev, Severity::High))
+        .count();
+    let medium = rule_ids
+        .iter()
+        .filter(|(_, sev, _)| matches!(sev, Severity::Medium))
+        .count();
 
     assert_eq!(critical, 3, "Should have 3 critical rules");
     assert_eq!(high, 7, "Should have 7 high rules");

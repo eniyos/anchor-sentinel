@@ -1,6 +1,6 @@
 //! Unit tests for IDL IR module
 
-use anchor_sentinel::idl::ir::{IdlVersion, ProgramIr, Instruction, AccountDef};
+use anchor_sentinel::idl::ir::{AccountDef, IdlVersion, Instruction, ProgramIr};
 
 #[test]
 fn test_idl_version_equality() {

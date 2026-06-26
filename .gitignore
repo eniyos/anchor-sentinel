@@ -3,6 +3,9 @@
 **/*.rs.bk
 *.pdb
 
+# Tarpaulin coverage reports
+tarpaulin-report.*
+
 # macOS
 .DS_Store
 

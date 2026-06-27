@@ -5,6 +5,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/anchor-sentinel.svg?style=flat-square)](https://crates.io/crates/anchor-sentinel)
 [![CI](https://github.com/Eniyanyosuva/anchor-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/Eniyanyosuva/anchor-sentinel/actions)
+[![Coverage](https://codecov.io/gh/Eniyanyosuva/anchor-sentinel/branch/main/graph/badge.svg)](https://codecov.io/gh/Eniyanyosuva/anchor-sentinel)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE)
 
 ---
@@ -207,13 +208,21 @@ sentinel explain missing_signer                 # learn why a rule matters
 ### Learn Security
 
 `sentinel explain <rule>` teaches you *why* a pattern is dangerous,
-with vulnerable and safe code examples:
+with vulnerable/safe code examples and detection patterns:
 
 ```sh
 sentinel explain missing_balance_check   # explains balance check vulnerability
 sentinel explain missing_signer        # explains signer authorization
 sentinel explain unsafe_arithmetic     # explains overflow risks
 ```
+
+Each explanation includes:
+- **WHAT** — what the vulnerability is
+- **WHY** — why it's dangerous with real-world context
+- **VULNERABLE/Safe examples** — code you can copy-paste
+- **Detection pattern** — what code triggers the rule
+- **See also** — related rules to check
+- **Exploit reference** — real-world attack references
 
 For the full flag reference, run `sentinel scan --help` or see
 [docs/cli.md](docs/cli.md).

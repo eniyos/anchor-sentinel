@@ -126,35 +126,46 @@ pub fn is_excluded(path: &Path, patterns: &[String]) -> bool {
     false
 }
 
-/// Simple glob matching (handles `*` wildcards).
+/// Glob matching supporting `*` and `**` (both match across path separators).
+///
+/// Both `*` and `**` match zero or more of any character including `/`.
+/// This is intentional for simple exclude configs — users expect
+/// `tests/*` to exclude everything under `tests/`.
 fn glob_match(pattern: &str, text: &str) -> bool {
-    let parts: Vec<&str> = pattern.split('*').collect();
-
-    if parts.len() == 1 {
-        return pattern == text;
+    if pattern.is_empty() {
+        return text.is_empty();
+    }
+    if text.is_empty() {
+        // Pattern is non-empty — only match if it's all wildcards.
+        return pattern.chars().all(|c| c == '*');
     }
 
-    let mut pos = 0;
-    for (i, part) in parts.iter().enumerate() {
-        if part.is_empty() {
-            continue;
-        }
-
-        if let Some(found) = text[pos..].find(part) {
-            if i == 0 && found != 0 {
-                return false;
+    if pattern.starts_with("**") {
+        let rest = &pattern[2..];
+        for i in 0..=text.len() {
+            if glob_match(rest, &text[i..]) {
+                return true;
             }
-            pos += found + part.len();
-        } else {
-            return false;
         }
+        return false;
     }
 
-    if pattern.ends_with('*') {
-        true
-    } else {
-        pos == text.len()
+    if pattern.starts_with('*') {
+        let rest = &pattern[1..];
+        for i in 0..=text.len() {
+            if glob_match(rest, &text[i..]) {
+                return true;
+            }
+        }
+        return false;
     }
+
+    // Literal character match.
+    if pattern.as_bytes()[0] == text.as_bytes()[0] {
+        return glob_match(&pattern[1..], &text[1..]);
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -229,5 +240,16 @@ mod tests {
         let config = Config::parse(toml).unwrap();
         assert_eq!(config.exclude.paths, vec!["tests", "migrations"]);
         assert!(config.ignore.rules.is_empty());
+    }
+
+    #[test]
+    fn test_double_star_glob() {
+        let path = PathBuf::from("tests/fixtures/vault/src/lib.rs");
+        assert!(is_excluded(&path, &["tests/**/*.rs".to_string()]));
+        assert!(is_excluded(
+            &path,
+            &["tests/**/lib.rs".to_string()]
+        ));
+        assert!(!is_excluded(&path, &["src/**/*.rs".to_string()]));
     }
 }

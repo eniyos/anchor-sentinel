@@ -231,11 +231,10 @@ fn cmd_scan(
         }
     }
 
-    let has_blocking = if let Some(min) = min {
-        all_findings.iter().any(|f| f.severity >= min)
-    } else {
-        strict && all_findings.iter().any(|f| f.severity > Severity::Info)
-    };
+    // `--min-severity` controls *display* filtering (done above).
+    // `--strict` controls the *exit code*: any non-Info finding → 1.
+    // If neither flag is set, exit 0 always.
+    let has_blocking = strict && all_findings.iter().any(|f| f.severity > Severity::Info);
 
     if has_blocking {
         Ok(ExitCode::from(1))

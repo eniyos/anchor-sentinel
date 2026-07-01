@@ -474,7 +474,8 @@ fn count_by_severity(findings: &[Finding]) -> (usize, usize, usize, usize) {
             Severity::Critical => c += 1,
             Severity::High => h += 1,
             Severity::Medium => m += 1,
-            Severity::Low | Severity::Info => l += 1,
+            Severity::Low => l += 1,
+            Severity::Info => {} // Info is purely informational — no penalty.
         }
     }
     (c, h, m, l)

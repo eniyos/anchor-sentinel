@@ -418,7 +418,6 @@ fn visit_stmt_macro(visitor: &mut BalanceVisitor, sm: &syn::StmtMacro) {
         });
         if mac_path.ends_with("invoke_signed") {
             let (seeds, summary) = classify_invoke_signed_seeds(&sm.mac.tokens);
-            eprintln!("DEBUG invoke_signed: seeds={seeds:?} summary={summary:?}");
             visitor.hints.push(RawHint {
                 kind: AstHintKind::CpiInvokeSigned {
                     target,

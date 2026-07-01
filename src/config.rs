@@ -246,10 +246,7 @@ mod tests {
     fn test_double_star_glob() {
         let path = PathBuf::from("tests/fixtures/vault/src/lib.rs");
         assert!(is_excluded(&path, &["tests/**/*.rs".to_string()]));
-        assert!(is_excluded(
-            &path,
-            &["tests/**/lib.rs".to_string()]
-        ));
+        assert!(is_excluded(&path, &["tests/**/lib.rs".to_string()]));
         assert!(!is_excluded(&path, &["src/**/*.rs".to_string()]));
     }
 }

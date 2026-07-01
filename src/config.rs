@@ -140,8 +140,8 @@ fn glob_match(pattern: &str, text: &str) -> bool {
         return pattern.chars().all(|c| c == '*');
     }
 
-    if pattern.starts_with("**") {
-        let rest = &pattern[2..];
+    // `**` matches zero or more characters including `/`.
+    if let Some(rest) = pattern.strip_prefix("**") {
         for i in 0..=text.len() {
             if glob_match(rest, &text[i..]) {
                 return true;
@@ -150,8 +150,8 @@ fn glob_match(pattern: &str, text: &str) -> bool {
         return false;
     }
 
-    if pattern.starts_with('*') {
-        let rest = &pattern[1..];
+    // `*` matches zero or more characters including `/`.
+    if let Some(rest) = pattern.strip_prefix('*') {
         for i in 0..=text.len() {
             if glob_match(rest, &text[i..]) {
                 return true;

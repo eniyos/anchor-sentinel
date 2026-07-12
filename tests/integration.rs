@@ -511,7 +511,12 @@ fn min_severity_exits0_when_no_findings_above_threshold() {
     let fixture =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-vulnerable");
     sentinel()
-        .args(["scan", fixture.to_str().unwrap(), "--min-severity", "critical"])
+        .args([
+            "scan",
+            fixture.to_str().unwrap(),
+            "--min-severity",
+            "critical",
+        ])
         .assert()
         .failure();
 }

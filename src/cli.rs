@@ -35,6 +35,7 @@ pub enum Command {
         ignore: Vec<String>,
 
         /// Minimum severity to report. Lower-severity findings are hidden.
+        /// Exit code is 1 when any finding at or above this severity exists.
         #[arg(long, value_enum)]
         min_severity: Option<MinSeverity>,
 

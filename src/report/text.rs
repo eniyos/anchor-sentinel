@@ -423,7 +423,7 @@ pub fn print_statistics(report: &ScanReport) {
     println!("{}", "Statistics".white().bold());
     println!();
     let rows: [(&str, String); 4] = [
-        ("Files analyzed", report.programs.to_string()),
+        ("Programs analyzed", report.programs.to_string()),
         ("Instructions analyzed", report.instructions.to_string()),
         ("Rules executed", report.rules_executed.to_string()),
         ("Findings detected", report.findings.len().to_string()),

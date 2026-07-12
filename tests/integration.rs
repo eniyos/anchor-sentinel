@@ -491,3 +491,67 @@ fn clean_vault_no_balance_findings() {
         "expected no balance/duplicate findings on clean vault, got {balance_rules}"
     );
 }
+
+#[test]
+fn min_severity_exits1_when_findings_present() {
+    // --min-severity high should exit 1 when there are high+ findings,
+    // even without --strict.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-vulnerable");
+    sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--min-severity", "high"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn min_severity_exits0_when_no_findings_above_threshold() {
+    // --min-severity critical on the vault-vulnerable fixture: there ARE
+    // critical findings, so exit 1.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-vulnerable");
+    sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--min-severity", "critical"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn min_severity_exits0_on_clean_project() {
+    // --min-severity high on a clean project should exit 0.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-clean");
+    sentinel()
+        .args(["scan", fixture.to_str().unwrap(), "--min-severity", "high"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn min_severity_hides_lower_findings() {
+    // --min-severity high should hide medium findings from output.
+    let fixture =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault-vulnerable");
+    let output = sentinel()
+        .args([
+            "scan",
+            fixture.to_str().unwrap(),
+            "--min-severity",
+            "high",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("scan ran");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let arr = v["findings"].as_array().unwrap();
+    // All remaining findings should be high or critical.
+    for f in arr {
+        let sev = f["severity"].as_str().unwrap();
+        assert!(
+            sev == "high" || sev == "critical",
+            "expected only high/critical findings with --min-severity high, got: {sev}"
+        );
+    }
+}

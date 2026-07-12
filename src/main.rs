@@ -231,10 +231,17 @@ fn cmd_scan(
         }
     }
 
-    // `--min-severity` controls *display* filtering (done above).
+    // `--min-severity` controls *display* filtering (done above) and the
+    // exit code: any finding at or above the threshold → 1.
     // `--strict` controls the *exit code*: any non-Info finding → 1.
     // If neither flag is set, exit 0 always.
-    let has_blocking = strict && all_findings.iter().any(|f| f.severity > Severity::Info);
+    let has_blocking = if strict {
+        all_findings.iter().any(|f| f.severity > Severity::Info)
+    } else if effective_min_severity.is_some() {
+        !all_findings.is_empty()
+    } else {
+        false
+    };
 
     if has_blocking {
         Ok(ExitCode::from(1))

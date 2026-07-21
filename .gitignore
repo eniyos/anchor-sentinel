@@ -22,6 +22,9 @@ tests/fixtures/public/anchor-examples/
 tests/fixtures/public/sealevel-attacks/
 tests/fixtures/public/anchor-zero-copy/
 
+# Node.js (not part of this Rust project)
+node_modules/
+
 # Insta snapshot review files
 *.pending-snap
 

@@ -25,6 +25,9 @@ tests/fixtures/public/anchor-zero-copy/
 # Node.js (not part of this Rust project)
 node_modules/
 
+# Site build output
+site/.next/
+
 # Insta snapshot review files
 *.pending-snap
 

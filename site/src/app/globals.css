@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+:root {
+  --start: 50vh;
+  --space: 50vh;
+  --hue: 270;
+  --accent: light-dark(hsl(var(--hue) 100% 50%), hsl(var(--hue) 90% 75%));
+  --switch: canvas;
+  --font-size-min: 14;
+  --font-size-max: 20;
+  --font-ratio-min: 1.1;
+  --font-ratio-max: 1.33;
+  --font-width-min: 375;
+  --font-width-max: 1500;
+}
+
+html {
+  color-scheme: dark;
+  scrollbar-color: var(--accent) #0000;
+}
+
+body {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  background: #000;
+  color: #fff;
+  margin: 0;
+}
+
+/* Grid background */
+body::before {
+  --size: 45px;
+  --line: color-mix(in hsl, canvasText, transparent 80%);
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, var(--line) 1px, transparent 1px var(--size))
+      calc(var(--size) * 0.36) 50% / var(--size) var(--size),
+    linear-gradient(var(--line) 1px, transparent 1px var(--size)) 0%
+      calc(var(--size) * 0.32) / var(--size) var(--size);
+  mask: linear-gradient(-20deg, transparent 50%, white);
+  pointer-events: none;
+}
+
+/* Sticky word cycling */
+.sentinel-header {
+  --font-level: 4;
+  --font-size-min: 24;
+  position: sticky;
+  top: calc((var(--count) - 1) * -1lh);
+  line-height: 1.2;
+  display: flex;
+  align-items: start;
+  width: 100%;
+  z-index: 1;
+}
+
+.sentinel-header section {
+  display: flex;
+  width: 100%;
+  align-items: start;
+  justify-content: center;
+  padding-top: calc(var(--start) - 0.5lh);
+}
+
+.sentinel-header section h1 {
+  position: sticky;
+  top: calc(var(--start) - 0.5lh);
+  margin: 0;
+  font-weight: 600;
+}
+
+.sentinel-words {
+  font-weight: 600;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sentinel-words li {
+  --dimmed: color-mix(in oklch, canvasText, #0000 80%);
+  background:
+    linear-gradient(
+      180deg,
+      var(--dimmed) 0 calc(var(--start) - 0.5lh),
+      var(--accent) calc(var(--start) - 0.55lh) calc(var(--start) + 0.55lh),
+      var(--dimmed) calc(var(--start) + 0.5lh)
+    );
+  background-attachment: fixed;
+  color: #0000;
+  background-clip: text;
+}
+
+/* Main section — dark terminal card */
+.sentinel-main {
+  width: 100%;
+  min-height: 100vh;
+  position: relative;
+  z-index: 2;
+  background: #000;
+  border-radius: 1rem 1rem 0 0;
+  padding: 4rem 1.5rem;
+}
+
+/* Terminal command block */
+.terminal-block {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 1.125rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #a1f4a1;
+}
+
+.terminal-block .prompt {
+  color: #666;
+}
+
+/* Feature cards */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.feature-card {
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  transition: border-color 0.2s;
+}
+
+.feature-card:hover {
+  border-color: #333;
+}
+
+.feature-card .severity-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+}
+
+/* View-timeline animations */
+@supports (animation-timeline: view()) {
+  .anim-section {
+    view-timeline: --section;
+  }
+  .anim-section .anim-card {
+    animation: fade-up both ease-out;
+    animation-timeline: --section;
+    animation-range: entry 0% entry 60%;
+  }
+  @keyframes fade-up {
+    from { opacity: 0; translate: 0 2rem; }
+    to { opacity: 1; translate: 0 0; }
+  }
+}
+
+/* Utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: https://site-kappa-seven-76.vercel.app/sitemap.xml
+Sitemap: https://anchor-sentinel.vercel.app/sitemap.xml

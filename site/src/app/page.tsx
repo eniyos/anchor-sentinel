@@ -1,194 +1,176 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 const WORDS = ["audit.", "detect.", "protect.", "scan.", "secure.", "verify.", "ship."];
-const FEATURES = [
-  { severity: "critical", color: "#ef4444", label: "Critical", rules: ["cpi_signer_seed_validation", "missing_balance_check", "missing_signer"] },
-  { severity: "high", color: "#eab308", label: "High", rules: ["duplicate_mutable_accounts", "lamports_drain", "missing_bump_seed_canonicalization", "missing_close_authority", "missing_ownership", "missing_reinit_guard", "pda_misconfig"] },
-  { severity: "medium", color: "#3b82f6", label: "Medium", rules: ["integer_cast_truncation", "missing_mut", "unchecked_balance_flow", "unsafe_arithmetic"] },
-];
-const ALL_RULES = [...FEATURES.flatMap((f) => f.rules)];
+
+type Platform = "cargo" | "linux" | "macos" | "windows";
+
+const INSTALL: Record<Platform, { cmd: string; label: string }> = {
+  cargo: {
+    cmd: "cargo install anchor-sentinel",
+    label: "Cargo (any)",
+  },
+  linux: {
+    cmd: "curl -sL https://github.com/eniyos/anchor-sentinel/releases/latest/download/sentinel-x86_64-unknown-linux-gnu.tar.gz | tar xz && sudo mv sentinel /usr/local/bin/",
+    label: "Linux (x86_64)",
+  },
+  macos: {
+    cmd: "curl -sL https://github.com/eniyos/anchor-sentinel/releases/latest/download/sentinel-x86_64-apple-darwin.tar.gz | tar xz && sudo mv sentinel /usr/local/bin/",
+    label: "macOS (x86_64)",
+  },
+  windows: {
+    cmd: "curl -sLO https://github.com/eniyos/anchor-sentinel/releases/latest/download/sentinel-x86_64-pc-windows-msvc.zip && tar -xf sentinel-x86_64-pc-windows-msvc.zip",
+    label: "Windows (x86_64)",
+  },
+};
+
+function CopyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
 
 export default function HomePage() {
+  const [platform, setPlatform] = useState<Platform>("cargo");
+  const [copied, setCopied] = useState(false);
+  const [flashing, setFlashing] = useState(false);
+
   useEffect(() => {
-    document.documentElement.style.setProperty("--hue", "270");
+    document.documentElement.style.setProperty("--hue", "120");
     document.documentElement.style.setProperty("--start", "50vh");
     document.documentElement.style.setProperty("--space", "50vh");
   }, []);
 
+  const current = INSTALL[platform];
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(current.cmd);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = current.cmd;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+
+    setCopied(true);
+    setFlashing(true);
+    setTimeout(() => {
+      setCopied(false);
+      setTimeout(() => setFlashing(false), 300);
+    }, 2000);
+  }, [current.cmd]);
+
   return (
-    <>
-      {/* Hero — sticky word cycling */}
-      <div
-        className="min-h-screen w-screen"
-        style={{ ["--count" as string]: WORDS.length } as React.CSSProperties}
-      >
-        <header className="sentinel-header">
-          <section>
-            <h1 className="sr-only sm:not-sr-only">
-              <span aria-hidden="true">you can&nbsp;</span>
-              <span className="sr-only">Anchor Sentinel — static security analysis for Solana programs.</span>
-            </h1>
-            <ul className="sentinel-words" aria-hidden="true">
-              {WORDS.map((word, i) => (
-                <li key={i} style={{ ["--i" as string]: i } as React.CSSProperties}>
-                  {word}
-                </li>
-              ))}
-            </ul>
-          </section>
-        </header>
+    <div
+      className="min-h-screen w-screen"
+      style={{ ["--count" as string]: WORDS.length } as React.CSSProperties}
+    >
+      <header className="sentinel-header">
+        <section>
+          <h1 className="sr-only">Anchor Sentinel — static security analysis for Solana programs.</h1>
+          <ul className="sentinel-words" aria-hidden="true">
+            {WORDS.map((word, i) => (
+              <li key={i} style={{ ["--i" as string]: i } as React.CSSProperties}>
+                {word}
+              </li>
+            ))}
+          </ul>
+        </section>
+      </header>
 
-        <main className="sentinel-main anim-section">
-          <div className="max-w-6xl mx-auto space-y-24">
-            {/* Hero install block */}
-            <section className="text-center pt-12">
-              <div className="flex justify-center mb-6">
-                <div className="terminal-block">
-                  <span className="prompt">$</span>
-                  <span>cargo install anchor-sentinel</span>
-                </div>
-              </div>
-              <p className="text-xl text-zinc-400 max-w-2xl mx-auto">
-                Static security analysis for Solana Anchor programs.
-                <br />
-                14 rules, 8 of 9 Sealevel-Attacks classes covered.
-              </p>
-              <div className="flex justify-center gap-4 mt-8 text-sm">
-                <a
-                  href="https://crates.io/crates/anchor-sentinel"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-5 py-2 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-900 transition-colors"
-                >
-                  crates.io
-                </a>
-                <a
-                  href="https://github.com/eniyos/anchor-sentinel"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-5 py-2 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-900 transition-colors"
-                >
-                  GitHub
-                </a>
-                <a
-                  href="https://github.com/eniyos/anchor-sentinel#quickstart"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-5 py-2 rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-900 transition-colors"
-                >
-                  Quickstart →
-                </a>
-              </div>
-            </section>
+      <div className="flex flex-col items-center gap-6 w-full px-4 pt-8 pb-24">
+        {/* Platform tabs */}
+        <div className="flex gap-1 bg-zinc-900 rounded-xl p-1 border border-zinc-800">
+          {(Object.entries(INSTALL) as [Platform, typeof current][]).map(([key, val]) => (
+            <button
+              key={key}
+              onClick={() => { setPlatform(key); setCopied(false); }}
+              className={`px-4 py-2 rounded-lg text-sm font-mono transition-all ${
+                platform === key
+                  ? "bg-[#a1f4a1]/10 text-[#a1f4a1] border border-[#a1f4a1]/30"
+                  : "text-zinc-500 hover:text-zinc-300 border border-transparent"
+              }`}
+            >
+              {val.label}
+            </button>
+          ))}
+        </div>
 
-            {/* How it works */}
-            <section>
-              <h2 className="text-2xl font-semibold mb-8 text-center">
-                <span className="text-zinc-500">$</span> sentinel scan .
-              </h2>
-              <div className="feature-grid">
-                <div className="anim-card feature-card">
-                  <h3 className="font-medium text-zinc-200 mb-2">IDL + AST Analysis</h3>
-                  <p className="text-sm text-zinc-500 leading-relaxed">
-                    Two-layer scanning. IDL checks account metadata. AST parsing detects unsafe
-                    arithmetic, missing balance checks, and CPI seed vulnerabilities in source.
-                  </p>
-                </div>
-                <div className="anim-card feature-card">
-                  <h3 className="font-medium text-zinc-200 mb-2">CI-Ready</h3>
-                  <p className="text-sm text-zinc-500 leading-relaxed">
-                    SARIF output for GitHub Code Scanning. Pre-built binaries. Fail builds on
-                    critical findings. Works in any CI pipeline.
-                  </p>
-                </div>
-                <div className="anim-card feature-card">
-                  <h3 className="font-medium text-zinc-200 mb-2">Educational</h3>
-                  <p className="text-sm text-zinc-500 leading-relaxed">
-                    <code className="text-[#a1f4a1]">sentinel explain &lt;rule&gt;</code> teaches why
-                    each pattern is dangerous with vulnerable and safe code examples.
-                  </p>
-                </div>
-              </div>
-            </section>
+        {/* Terminal block — click to copy */}
+        <button
+          onClick={handleCopy}
+          className={`terminal-block w-full max-w-2xl cursor-pointer group relative text-left ${
+            flashing ? "terminal-flash" : ""
+          }`}
+          aria-label="Click to copy install command"
+        >
+          <span className="prompt select-none">$</span>
+          <span className="truncate">{current.cmd}</span>
 
-            {/* Rules catalog */}
-            <section>
-              <h2 className="text-2xl font-semibold mb-2 text-center">14 Security Rules</h2>
-              <p className="text-zinc-500 text-center mb-10 text-sm">
-                Covering 8 of 9 canonical Sealevel-Attacks classes
-              </p>
+          {/* Copy / Check icon */}
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300">
+            <span className={`icon-transition ${copied ? "icon-visible icon-check" : "icon-hidden icon-copy"}`}>
+              <CheckIcon />
+            </span>
+            <span className={`icon-transition ${copied ? "icon-hidden" : "icon-visible"}`}>
+              <CopyIcon />
+            </span>
+          </span>
+        </button>
 
-              {FEATURES.map((group) => (
-                <div key={group.severity} className="mb-10">
-                  <h3 className="text-sm font-medium uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <span
-                      className="inline-block w-2 h-2 rounded-full"
-                      style={{ background: group.color }}
-                    />
-                    {group.label}
-                    <span className="text-zinc-600 font-normal">— {group.rules.length} rules</span>
-                  </h3>
-                  <div className="feature-grid">
-                    {group.rules.map((rule) => (
-                      <div key={rule} className="anim-card feature-card">
-                        <code className="text-sm font-mono" style={{ color: group.color }}>
-                          {rule}
-                        </code>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </section>
+        {/* "Copied!" toast */}
+        <div className={`toast ${copied ? "toast-visible" : ""}`}>
+          <CheckIcon />
+          Copied to clipboard
+        </div>
 
-            {/* CTA */}
-            <section className="text-center pb-12">
-              <h2 className="text-xl font-semibold mb-4">Deploy with confidence</h2>
-              <div className="flex justify-center">
-                <div className="terminal-block">
-                  <span className="prompt">$</span>
-                  <span>sentinel scan .</span>
-                </div>
-              </div>
-              <p className="text-zinc-500 text-sm mt-6">
-                <a
-                  href="https://github.com/eniyos/anchor-sentinel"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:text-zinc-300"
-                >
-                  GitHub
-                </a>
-                <span className="mx-3">·</span>
-                <a
-                  href="https://crates.io/crates/anchor-sentinel"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:text-zinc-300"
-                >
-                  crates.io
-                </a>
-                <span className="mx-3">·</span>
-                <a
-                  href="https://github.com/eniyos/anchor-sentinel#rules"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:text-zinc-300"
-                >
-                  Docs
-                </a>
-              </p>
-            </section>
-          </div>
-
-          {/* Footer */}
-          <footer className="text-center text-xs text-zinc-700 pt-8 border-t border-zinc-900 mt-12 max-w-6xl mx-auto">
-            Anchor Sentinel — MIT / Apache-2.0
-          </footer>
-        </main>
+        {/* Links */}
+        <div className="flex items-center gap-4">
+          <a
+            href="https://crates.io/crates/anchor-sentinel"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-500 hover:text-[#a1f4a1] transition-colors text-sm font-mono"
+          >
+            crates.io
+          </a>
+          <span className="text-zinc-800">/</span>
+          <a
+            href="https://github.com/eniyos/anchor-sentinel"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-500 hover:text-[#a1f4a1] transition-colors text-sm font-mono"
+          >
+            GitHub
+          </a>
+          <span className="text-zinc-800">/</span>
+          <a
+            href="https://github.com/eniyos/anchor-sentinel#quickstart"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-zinc-500 hover:text-[#a1f4a1] transition-colors text-sm font-mono"
+          >
+            Quickstart →
+          </a>
+        </div>
       </div>
-    </>
+    </div>
   );
 }

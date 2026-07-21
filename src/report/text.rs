@@ -213,11 +213,10 @@ pub fn print_hero(project: &str, config: &crate::config::Config) {
 /// in a 6-char field. TTY vs non-TTY diverge only on color, not on
 /// content — the test suite sees a clean plain-text pipeline.
 pub fn print_pipeline(timings: &ScanTimings) {
-    let stages: [(&str, Duration); 5] = [
+    let stages: [(&str, Duration); 4] = [
         ("Loaded rules", timings.load),
         ("Parsed IDL", timings.parse_idls),
         ("Built AST", timings.ast_hints),
-        ("Indexed accounts", timings.ast_hints),
         ("Executed security checks", timings.run_rules),
     ];
     for (label, dur) in stages {

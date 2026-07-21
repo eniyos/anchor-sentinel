@@ -54,6 +54,7 @@ pub struct AccountMeta {
     pub address: Option<String>,
     #[serde(default)]
     pub pda: Option<Pda>,
+    #[allow(dead_code)]
     #[serde(default)]
     pub relations: Vec<String>,
 }

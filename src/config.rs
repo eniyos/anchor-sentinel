@@ -8,14 +8,16 @@
 //!
 //! Supported TOML format:
 //!
-//!   [exclude]
-//!   paths = ["tests", "migrations"]
+//! ```toml
+//! [exclude]
+//! paths = ["tests", "migrations"]
 //!
-//!   [ignore]
-//!   rules = ["missing_mut"]
+//! [ignore]
+//! rules = ["missing_mut"]
 //!
-//!   [severity]
-//!   min = "high"
+//! [severity]
+//! min = "high"
+//! ```
 
 use std::path::{Path, PathBuf};
 

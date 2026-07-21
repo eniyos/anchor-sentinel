@@ -31,7 +31,7 @@ pub fn load_idl(path: &Path) -> Result<ProgramIr> {
 /// Build a `ProgramIr` from a raw `serde_json::Value`, auto-detecting the
 /// IDL dialect.
 pub fn from_value(json: serde_json::Value, source_path: &str) -> Result<ProgramIr> {
-    if json.get("metadata").is_some() && json.get("version").is_none() {
+    if json.get("metadata").is_some() {
         let parsed: v31::IdlFile = serde_json::from_value(json)
             .with_context(|| format!("deserializing IDL (v31) from {source_path}"))?;
         return Ok(convert_v31(parsed, source_path));
@@ -81,7 +81,7 @@ fn convert_v31(idl: v31::IdlFile, source_path: &str) -> ProgramIr {
                 .accounts
                 .into_iter()
                 .map(|a| {
-                    let is_signer = a.signer || a.relations.iter().any(|r| r == "project");
+                    let is_signer = a.signer;
                     InstructionAccount {
                         name: a.name,
                         is_mut: a.writable,

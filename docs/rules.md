@@ -1,6 +1,6 @@
 # Rules catalog
 
-13 rules in total, organized by severity. Each rule has:
+14 rules in total, organized by severity. Each rule has:
 
 - **What it checks** — the exact pattern.
 - **Layer** — `IDL` (IDL only), `AST` (Rust source only), or
@@ -147,6 +147,20 @@ gap.
 
 ---
 
+### `missing_reinit_guard`  (AST)
+
+Flags accounts declared with `init_if_needed` that lack a
+reinitialization guard. Without `has_one = <authority>` or
+`constraint = <field> == <signer>.key()` on the struct field, any
+signer who pays can reinitialize the account and overwrite its
+state — a silent state clobber.
+
+**False positives:** rare. If you have a custom authority-binding
+pattern that the AST heuristic doesn't recognize, the rule may fire.
+Use `--ignore missing_reinit_guard` to suppress.
+
+---
+
 ## Medium
 
 ### `integer_cast_truncation`  (AST)
@@ -214,6 +228,7 @@ are skipped because they can't overflow.
 | `missing_close_authority` | AST | High | Low |
 | `missing_ownership` | IDL+AST | High | Low |
 | `pda_misconfig` | IDL+AST | High | Very low |
+| `missing_reinit_guard` | AST | High | Low |
 | `integer_cast_truncation` | AST | Medium | Medium (variable-name heuristic) |
 | `missing_mut` | IDL+AST | Medium | Medium (naming heuristic) |
 | `unchecked_balance_flow` | IDL+AST | Medium | Medium-High (per-handler) |
